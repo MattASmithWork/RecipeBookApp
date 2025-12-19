@@ -19,5 +19,5 @@ COPY Backend/RecipeBookAppBackend/src /app
 
 EXPOSE 8000
 
-# Run the FastAPI app (module: app_api, variable: app)
-CMD ["uvicorn", "app_api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the FastAPI app (module: app_api, variable: app) and honor PORT if provided by the platform
+CMD ["bash", "-c", "uvicorn app_api:app --host 0.0.0.0 --port ${PORT:-8000}"]
