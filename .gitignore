@@ -44,3 +44,6 @@ logs/
 # Misc
 *.sqlite3
 *.db
+
+
+password.txt
