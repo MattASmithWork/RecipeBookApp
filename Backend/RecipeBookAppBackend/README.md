@@ -29,13 +29,14 @@ bin/python -m uvicorn src.app_api:app --host 0.0.0.0 --port 8000 --reload
 
 ## Quick checks
 - Health: `curl http://localhost:8000/health`
-- Create recipe:
+- Create recipe for `matt`:
 	```bash
 	curl -X POST http://localhost:8000/recipes/ \
 		-H "Content-Type: application/json" \
-		-d '{"name":"Test","ingredients":["salt"],"instructions":["mix"],"prep_time":5,"cook_time":10,"servings":2,"user":"alice"}'
+		-d '{"name":"Test","ingredients":["salt"],"instructions":["mix"],"prep_time":5,"cook_time":10,"servings":2,"user":"matt"}'
 	```
-- List recipes: `curl http://localhost:8000/recipes/alice`
+- List recipes for `matt`: `curl http://localhost:8000/recipes/matt`
+- Repeat the same calls with `user":"nicole"` to keep a separate collection of recipes for Nicole.
 
 ## Notes
 - `connectToDataBase.py` requires `MONGO_URI`; without it the app raises at startup.

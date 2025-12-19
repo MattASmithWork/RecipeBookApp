@@ -12,8 +12,8 @@ Your backend is now configured to deploy to Railway with MongoDB Atlas. Follow t
 
 1. Go to https://railway.app/dashboard
 2. Click "Create New Project" → "Deploy from GitHub"
-3. Connect your GitHub account and select this repository: `recipeApp`
-4. Railway will automatically detect the project
+3. Connect your GitHub account and select this repository: `RecipeBookApp`
+4. Railway will automatically detect the project (root `railway.json` points to `Backend/RecipeBookAppBackend/src` and its Dockerfile)
 
 ### 2. Configure Environment Variable
 
@@ -27,15 +27,7 @@ Your backend is now configured to deploy to Railway with MongoDB Atlas. Follow t
 
 ### 3. Deploy
 
-Railway will automatically build and deploy when you push to GitHub:
-
-```bash
-cd /home/matthew/Documents/Projects/recipeApp/recipeApp
-git remote add railway <your-railway-git-url>
-git push railway main
-```
-
-Or you can trigger a manual deployment in the Railway dashboard.
+Railway will automatically build and deploy when you push to GitHub (it will use the root `railway.json` so you do not need to set a custom path). You can also trigger a manual deployment in the Railway dashboard.
 
 ### 4. Get Your App URL
 
