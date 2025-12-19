@@ -10,12 +10,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt /app/requirements.txt
+# Install Python dependencies (paths relative to repo root build context)
+COPY Backend/RecipeBookAppBackend/src/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy application code
-COPY . /app
+COPY Backend/RecipeBookAppBackend/src /app
 
 EXPOSE 8000
 
