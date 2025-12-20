@@ -1,2 +1,10 @@
 # Ignore password files
 password.txt
+# Ignore log files
+*.log
+SECURITY_FIXES.md 
+SECURITY_IMPLEMENTATIONS.md
+UNIT_BASED_INVENTORY.md
+NUTRITION_TRACKING.md
+# Ignore temporary files
+*.tmp

@@ -4,10 +4,12 @@ import { useRecipeStore } from './utils/store';
 import { checkHealth, getRecipes } from './services/api';
 import RecipesScreen from './screens/RecipesScreen';
 import IngredientsScreen from './screens/IngredientsScreen';
+import GitHubRecipesScreen from './screens/GitHubRecipesScreen';
+import ShoppingListScreen from './screens/ShoppingListScreen';
 
 export default function App() {
   const { currentUser } = useRecipeStore();
-  const [activeTab, setActiveTab] = React.useState<'recipes' | 'ingredients'>('recipes');
+  const [activeTab, setActiveTab] = React.useState<'recipes' | 'ingredients' | 'github' | 'shopping'>('recipes');
   const [apiReady, setApiReady] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
 
@@ -63,7 +65,10 @@ export default function App() {
       </View>
 
       {/* Main Content */}
-      {activeTab === 'recipes' ? <RecipesScreen /> : <IngredientsScreen />}
+      {activeTab === 'recipes' && <RecipesScreen />}
+      {activeTab === 'ingredients' && <IngredientsScreen />}
+      {activeTab === 'github' && <GitHubRecipesScreen />}
+      {activeTab === 'shopping' && <ShoppingListScreen />}
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
@@ -73,6 +78,22 @@ export default function App() {
         >
           <Text style={[styles.navText, activeTab === 'recipes' && styles.navTextActive]}>
             📖 Recipes
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, activeTab === 'github' && styles.navButtonActive]}
+          onPress={() => setActiveTab('github')}
+        >
+          <Text style={[styles.navText, activeTab === 'github' && styles.navTextActive]}>
+            🌐 Community
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, activeTab === 'shopping' && styles.navButtonActive]}
+          onPress={() => setActiveTab('shopping')}
+        >
+          <Text style={[styles.navText, activeTab === 'shopping' && styles.navTextActive]}>
+            🛒 Shopping
           </Text>
         </TouchableOpacity>
         <TouchableOpacity

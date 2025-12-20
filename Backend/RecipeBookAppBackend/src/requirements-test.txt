@@ -1,0 +1,16 @@
+# Testing dependencies for Recipe Book App Backend
+
+# Core testing framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Test client
+httpx==0.28.1
+
+# Mock database
+mongomock==4.1.2
+
+# Test utilities
+faker==20.1.0
+freezegun==1.4.0
