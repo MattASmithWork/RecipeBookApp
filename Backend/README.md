@@ -1,6 +1,6 @@
 # Recipe Book App Backend
 
-A FastAPI-based REST API server for managing recipes, shopping lists, inventory, nutrition tracking, user accounts, and weight monitoring with MongoDB Atlas integration. This backend supports multi-user functionality with personalized health metrics and is designed to be deployed on Railway with Docker.
+A FastAPI-based REST API server for managing recipes, shopping lists, inventory, nutrition tracking, user accounts, and weight monitoring with MongoDB Atlas integration. Features barcode scanning with Open Food Facts API integration for automatic product nutrition lookup. This backend supports multi-user functionality with personalized health metrics and is designed to be deployed on Railway with Docker.
 
 ---
 
@@ -22,11 +22,13 @@ A FastAPI-based REST API server for managing recipes, shopping lists, inventory,
 The backend is built with:
 - **FastAPI**: Modern Python web framework for building APIs
 - **MongoDB Atlas**: Cloud-hosted NoSQL database with 7 collections
+- **Open Food Facts API**: Product database for barcode scanning (2.8M+ products)
 - **Docker**: Containerization for consistent deployment
 - **Railway**: Cloud platform for hosting
 - **Uvicorn**: ASGI server for running FastAPI
 - **Pydantic**: Data validation and serialization
 - **slowapi**: Rate limiting for API protection
+- **httpx**: Async HTTP client for external API calls
 
 **Data Flow:**
 ```
@@ -697,7 +699,13 @@ Body: {
   "unit": string,
   "estimatedPrice": number,
   "category": string,
-  "addedBy": string
+  "addedBy": string,
+  "barcode": string (optional),
+  "calories": number (optional, per serving),
+  "protein": number (optional, grams),
+  "carbs": number (optional, grams),
+  "fat": number (optional, grams),
+  "servingSize": string (optional, e.g., "100g")
 }
 ```
 
@@ -710,6 +718,40 @@ PUT /shopping-list/{item_id}/mark-bought?user={user}
 ```
 DELETE /shopping-list/{item_id}?user={user}
 ```
+
+### Barcode Lookup
+
+**Look up product by barcode:**
+```
+GET /barcode/{barcode}
+Parameters:
+  - barcode: Product barcode (8-13 digits, UPC/EAN)
+Response: {
+  "found": boolean,
+  "product": {
+    "name": string,
+    "brand": string,
+    "barcode": string,
+    "calories": number (per 100g/ml),
+    "protein": number (per 100g/ml),
+    "carbs": number (per 100g/ml),
+    "fat": number (per 100g/ml),
+    "servingSize": string,
+    "imageUrl": string,
+    "category": string
+  },
+  "message": string (if not found)
+}
+Example: GET /barcode/737628064502
+```
+
+**Data Source:** Open Food Facts API (2.8M+ products worldwide)
+**Features:**
+- Free and open-source product database
+- Nutrition data (calories, protein, carbs, fat)
+- Product images and branding
+- Multiple barcode formats (UPC-A, UPC-E, EAN-8, EAN-13)
+- No API key required
 
 ### Inventory
 

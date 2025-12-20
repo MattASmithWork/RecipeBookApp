@@ -109,6 +109,13 @@ export interface ShoppingItem {
   category?: string;  // Food category (vegetables, dairy, etc.)
   addedBy?: string;  // User who added the item
   addedAt?: string;  // ISO timestamp when added
+  // Barcode and nutrition fields
+  barcode?: string;  // Product barcode (UPC/EAN)
+  calories?: number;  // Calories per serving
+  protein?: number;  // Protein in grams
+  carbs?: number;  // Carbohydrates in grams
+  fat?: number;  // Fat in grams
+  servingSize?: string;  // e.g., "100g" or "1 bottle"
 }
 
 /**
@@ -127,6 +134,13 @@ export interface InventoryItem {
   category?: string;  // Food category
   purchasedAt?: string;  // ISO timestamp when purchased
   purchasedBy?: string;  // User who purchased it
+  // Barcode and nutrition fields
+  barcode?: string;  // Product barcode (UPC/EAN)
+  calories?: number;  // Calories per serving
+  protein?: number;  // Protein in grams
+  carbs?: number;  // Carbohydrates in grams
+  fat?: number;  // Fat in grams
+  servingSize?: string;  // e.g., "100g" or "1 bottle"
 }
 
 /**
@@ -481,6 +495,37 @@ export const markItemBought = async (id: string, purchasedBy?: string): Promise<
     return response.data;
   } catch (error) {
     console.error('Error marking item as bought:', error);
+    throw error;
+  }
+};
+
+/**
+ * Look up product information by barcode
+ * Uses Open Food Facts API via backend
+ * @param barcode - Product barcode (UPC/EAN-13, 8-13 digits)
+ * @returns Promise with product data if found
+ */
+export const lookupBarcode = async (barcode: string): Promise<{
+  found: boolean;
+  product?: {
+    name: string;
+    brand: string;
+    barcode: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    servingSize: string;
+    imageUrl: string;
+    category: string;
+  };
+  message?: string;
+}> => {
+  try {
+    const response = await api.get(`/barcode/${barcode}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error looking up barcode:', error);
     throw error;
   }
 };

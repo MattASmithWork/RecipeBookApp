@@ -7,6 +7,10 @@ A React Native (Expo) mobile app for managing recipes and discovering what you c
 - 📖 **View Recipes:** Browse all your recipes organized by user
 - 🥘 **Ingredient Matching:** Add your ingredients and see which recipes you can cook
 - 🎯 **Smart Suggestions:** Get exact matches and close-match recipes
+- 📷 **Barcode Scanning:** Scan product barcodes to add items with automatic nutrition data
+- 🍎 **Nutrition Tracking:** View calories, protein, carbs, and fat for scanned products
+- 🛒 **Shopping List:** Manage shopping with unit-based tracking and nutrition info
+- 📦 **Inventory Management:** Track owned items with nutrition data from barcode scans
 - 🔄 **Sync with Backend:** Real-time sync with your FastAPI backend
 - 📱 **Cross-Platform:** Works on Android and iOS
 
@@ -52,11 +56,19 @@ npm run web
 ## Architecture
 
 ### Services
-- `app/services/api.ts` - HTTP client for FastAPI backend (recipes CRUD operations)
+- `app/services/api.ts` - HTTP client for FastAPI backend (recipes, shopping, inventory, barcode lookup)
+
+### Components
+- `app/components/BarcodeScannerModal.tsx` - Camera-based barcode scanner with manual entry
+- `app/components/AddRecipeModal.tsx` - Recipe creation modal
 
 ### Screens
 - `app/screens/RecipesScreen.tsx` - View and manage recipes
 - `app/screens/IngredientsScreen.tsx` - Add ingredients and see matching recipes
+- `app/screens/ShoppingListScreen.tsx` - Shopping list and inventory management
+- `app/screens/NutritionTrackerScreen.tsx` - Calorie and nutrition tracking
+- `app/screens/WeightTrackingScreen.tsx` - Weight measurements over time
+- `app/screens/AccountSetupScreen.tsx` - User profile and health metrics
 
 ### Utilities
 - `app/utils/recipeMatching.ts` - Ingredient matching logic and recipe suggestions
@@ -82,6 +94,28 @@ npm run web
 - Calculates match percentage for each recipe
 - Ranks by highest match percentage first
 
+### Barcode Scanning
+
+1. User taps "Scan Barcode" button in shopping list
+2. Camera opens with barcode detection overlay
+3. App scans barcode (UPC/EAN-8/EAN-13 formats)
+4. Backend queries Open Food Facts API (2.8M+ products)
+5. Product data returned with nutrition info:
+   - Calories per 100g/ml
+   - Protein, carbs, and fat
+   - Brand and product name
+   - Serving size
+6. User confirms to add to shopping list with nutrition data
+7. When marked as bought, nutrition data moves to inventory
+
+**Supported Barcodes:**
+- UPC-A (12 digits) - Common in North America
+- UPC-E (8 digits) - Shortened UPC
+- EAN-13 (13 digits) - International standard
+- EAN-8 (8 digits) - Shorter European format
+
+**Manual Entry:** If camera unavailable, users can type barcode numbers
+
 ## Environment Variables
 
 Create a `.env` file:
@@ -105,11 +139,35 @@ EXPO_PUBLIC_API_URL=https://your-railway-app.up.railway.app
 
 The app expects these FastAPI endpoints:
 
+**Recipes:**
 - `GET /health` - Health check
 - `GET /recipes/{user}` - Get all recipes for a user
 - `POST /recipes/` - Create a new recipe
 - `PUT /recipes/{id}` - Update a recipe
 - `DELETE /recipes/{id}` - Delete a recipe
+
+**Shopping & Inventory:**
+- `GET /shopping-list` - Get shopping list
+- `POST /shopping-list` - Add item to shopping list
+- `DELETE /shopping-list/{id}` - Remove item
+- `POST /shopping-list/{id}/mark-bought` - Move item to inventory
+- `GET /inventory` - Get inventory items
+- `POST /inventory` - Add item to inventory
+
+**Barcode Scanning:**
+- `GET /barcode/{barcode}` - Look up product by barcode (Open Food Facts)
+
+**Nutrition:**
+- `GET /nutrition/logs` - Get nutrition logs
+- `POST /nutrition/log` - Log a meal
+- `GET /nutrition/goals/{user}` - Get nutrition goals
+- `POST /nutrition/goals` - Set nutrition goals
+
+**Accounts & Weight:**
+- `GET /accounts/{user}` - Get user account
+- `POST /accounts` - Create/update account
+- `GET /weight/{user}` - Get weight history
+- `POST /weight` - Add weight measurement
 
 See `../../../backend` for the FastAPI implementation.
 
@@ -127,6 +185,8 @@ See `../../../backend` for the FastAPI implementation.
 
 - **expo** - React Native framework
 - **expo-router** - File-based routing
+- **expo-camera** - Camera access for barcode scanning
+- **expo-barcode-scanner** - Barcode detection and scanning
 - **react-native** - Mobile UI framework
 - **axios** - HTTP client
 - **zustand** - Lightweight state management

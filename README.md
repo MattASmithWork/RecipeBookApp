@@ -72,16 +72,21 @@ The application follows a modern full-stack architecture:
 
 ### 🛒 Shopping List
 - **Unit-Based Tracking**: Add items with precise amounts and units (kg, L, ml, g, oz, lb, etc.)
+- **Barcode Scanning**: Scan product barcodes to automatically add items with nutrition data
+- **Nutrition Data**: Automatically fetch calories, protein, carbs, and fat from Open Food Facts database
 - **Price Estimation**: Automatic grocery price estimation for budget planning
-- **Buy Tracking**: Mark items as bought to move them to inventory
+- **Buy Tracking**: Mark items as bought to move them to inventory with preserved nutrition data
 - **Multi-User Lists**: Support for household shopping management
+- **Manual Entry**: Option to enter barcodes manually if camera unavailable
 
 ### 📦 Inventory Management
 - **Unit-Based Tracking**: Track amounts with 11 supported units (kg, g, L, ml, oz, lb, cup, tbsp, tsp, unit, piece)
+- **Nutrition Tracking**: View nutrition information for items scanned with barcodes
 - **Consumption Tracking**: Automatically deduct ingredients when consuming recipes
 - **Low Stock Alerts**: Get notified when items fall below threshold
 - **Auto-Removal**: Items at 0 quantity are automatically removed
 - **Manual Adjustments**: Update quantities manually as needed
+- **Barcode History**: Track which items were scanned and their nutritional values
 
 ### 🥗 Nutrition & Calorie Tracking
 - **Meal Logging**: Log meals with detailed nutrition info (calories, protein, carbs, fat, fiber, sugar, sodium)
@@ -118,6 +123,8 @@ The application follows a modern full-stack architecture:
 - **Similarity Analysis**: Calculates recipe similarity based on ingredient overlap
 - **Confidence Scoring**: Provides confidence levels for price and calorie estimates
 - **Learning System**: Uses GitHub recipe database as training data
+- **Barcode Integration**: Connects to Open Food Facts API for product data (2.8M+ products worldwide)
+- **Smart Nutrition**: Automatic nutrition data lookup and storage for grocery items
 
 ---
 
@@ -170,6 +177,8 @@ See [Frontend README](./Frontend/README.md) for detailed instructions.
 ### Frontend
 - **React Native 0.76.3** - Cross-platform mobile framework
 - **Expo 51.0.39** - Development platform and toolchain
+- **Expo Camera 15.0.0** - Camera access for barcode scanning
+- **Expo Barcode Scanner 13.0.0** - Barcode scanning functionality
 - **TypeScript 5.5.0** - Type-safe JavaScript
 - **Zustand 4.4.0** - Lightweight state management
 - **Expo Router 3.4.0** - File-based navigation

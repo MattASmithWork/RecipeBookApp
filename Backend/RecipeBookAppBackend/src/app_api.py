@@ -361,6 +361,13 @@ class ShoppingItem(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     addedBy: Optional[str] = Field(None, max_length=100)
     addedAt: Optional[str] = None
+    # Barcode and nutrition fields
+    barcode: Optional[str] = Field(None, max_length=50)  # Product barcode (UPC/EAN)
+    calories: Optional[float] = Field(None, ge=0, le=10000)  # Calories per serving
+    protein: Optional[float] = Field(None, ge=0, le=1000)  # Protein in grams
+    carbs: Optional[float] = Field(None, ge=0, le=1000)  # Carbohydrates in grams
+    fat: Optional[float] = Field(None, ge=0, le=1000)  # Fat in grams
+    servingSize: Optional[str] = Field(None, max_length=100)  # e.g., "100g" or "1 bottle"
     
     @field_validator('name')
     @classmethod
@@ -394,6 +401,13 @@ class InventoryItem(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     purchasedAt: Optional[str] = None
     purchasedBy: Optional[str] = Field(None, max_length=100)
+    # Barcode and nutrition fields
+    barcode: Optional[str] = Field(None, max_length=50)  # Product barcode (UPC/EAN)
+    calories: Optional[float] = Field(None, ge=0, le=10000)  # Calories per serving
+    protein: Optional[float] = Field(None, ge=0, le=1000)  # Protein in grams
+    carbs: Optional[float] = Field(None, ge=0, le=1000)  # Carbohydrates in grams
+    fat: Optional[float] = Field(None, ge=0, le=1000)  # Fat in grams
+    servingSize: Optional[str] = Field(None, max_length=100)  # e.g., "100g" or "1 bottle"
     
     @field_validator('name')
     @classmethod
@@ -775,10 +789,19 @@ def mark_item_bought(request: Request, id: str, purchasedBy: Optional[str] = Non
                 # Step 2: Create inventory item with purchase metadata
                 inventory_item = {
                     "name": item["name"],
-                    "quantity": item["quantity"],
+                    "quantity": item.get("quantity"),
+                    "amount": item.get("amount", 1.0),
+                    "unit": item.get("unit", "unit"),
                     "category": item.get("category"),
                     "purchasedAt": datetime.utcnow().isoformat(),
-                    "purchasedBy": purchasedBy
+                    "purchasedBy": purchasedBy,
+                    # Preserve nutrition data if available
+                    "barcode": item.get("barcode"),
+                    "calories": item.get("calories"),
+                    "protein": item.get("protein"),
+                    "carbs": item.get("carbs"),
+                    "fat": item.get("fat"),
+                    "servingSize": item.get("servingSize")
                 }
                 
                 # Add to inventory collection
@@ -806,6 +829,97 @@ def mark_item_bought(request: Request, id: str, purchasedBy: Optional[str] = Non
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to mark item as bought: {str(e)}"
+        )
+
+
+# === Barcode Lookup Endpoint ===
+
+@app.get("/barcode/{barcode}")
+@limiter.limit("10/minute")
+async def lookup_barcode(request: Request, barcode: str):
+    """
+    Look up product information by barcode using Open Food Facts API.
+    Returns nutrition data, product name, and other details.
+    
+    Args:
+        barcode - Product barcode (UPC/EAN-13, typically 8-13 digits)
+    
+    Returns:
+        {
+            "found": bool,
+            "product": {
+                "name": str,
+                "brand": str,
+                "barcode": str,
+                "calories": float (per 100g/ml),
+                "protein": float (per 100g/ml),
+                "carbs": float (per 100g/ml),
+                "fat": float (per 100g/ml),
+                "servingSize": str,
+                "imageUrl": str,
+                "category": str
+            }
+        }
+    """
+    # Validate barcode format
+    if not barcode.isdigit() or len(barcode) < 8 or len(barcode) > 13:
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid barcode format. Must be 8-13 digits."
+        )
+    
+    try:
+        # Query Open Food Facts API
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"https://world.openfoodfacts.org/api/v2/product/{barcode}",
+                headers={"User-Agent": "RecipeBookApp/1.0"}
+            )
+        
+        if response.status_code != 200:
+            return {"found": False, "message": "Product not found in database"}
+        
+        data = response.json()
+        
+        # Check if product exists
+        if data.get("status") != 1 or "product" not in data:
+            return {"found": False, "message": "Product not found"}
+        
+        product_data = data["product"]
+        
+        # Extract nutrition info (per 100g/100ml)
+        nutriments = product_data.get("nutriments", {})
+        
+        # Build response with available data
+        product_info = {
+            "name": product_data.get("product_name", "Unknown Product"),
+            "brand": product_data.get("brands", ""),
+            "barcode": barcode,
+            "calories": nutriments.get("energy-kcal_100g", 0),
+            "protein": nutriments.get("proteins_100g", 0),
+            "carbs": nutriments.get("carbohydrates_100g", 0),
+            "fat": nutriments.get("fat_100g", 0),
+            "servingSize": product_data.get("serving_size", "100g"),
+            "imageUrl": product_data.get("image_url", ""),
+            "category": product_data.get("categories", "")
+        }
+        
+        return {"found": True, "product": product_info}
+    
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504, 
+            detail="Barcode lookup service timeout. Please try again."
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Failed to connect to barcode lookup service: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error looking up barcode: {str(e)}"
         )
 
 
