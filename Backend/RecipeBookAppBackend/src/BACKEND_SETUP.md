@@ -9,10 +9,10 @@ Your backend needs to be configured to use the MongoDB Atlas connection string.
 Update your backend's `.env` file (or Railway environment variables) with:
 
 ```
-MONGO_URI=mongodb+srv://matthewasshetonsmith_db_user:<db_password>@recipeapp.nsmbuj7.mongodb.net/
+MONGO_URI=mongodb+srv://<USERNAME>:<PASSWORD>@recipeapp.nsmbuj7.mongodb.net/
 ```
 
-**Replace `<db_password>` with your actual MongoDB Atlas password.**
+**Replace `<USERNAME>` and `<PASSWORD>` with your actual MongoDB Atlas credentials.**
 
 ### Step 2: Deploy Backend to Railway
 

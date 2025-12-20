@@ -22,7 +22,8 @@ Your backend is now configured to deploy to Railway with MongoDB Atlas. Follow t
 3. Click "Variables" tab
 4. Add the MongoDB connection:
    - **Key:** `MONGO_URI`
-   - **Value:** `mongodb+srv://matthewasshetonsmith_db_user:arrww81PrTMk0VBU@recipeapp.nsmbuj7.mongodb.net/`
+   - **Value:** `mongodb+srv://<USERNAME>:<PASSWORD>@recipeapp.nsmbuj7.mongodb.net/`
+   - Replace `<USERNAME>` and `<PASSWORD>` with your MongoDB Atlas credentials
 5. Click "Save"
 
 ### 3. Deploy
@@ -66,7 +67,7 @@ You should get:
 ## Troubleshooting
 
 ### MongoDB Connection Failed
-- Verify password: `arrww81PrTMk0VBU`
+- Verify your MongoDB Atlas password is correct in the `MONGO_URI` environment variable
 - Check MongoDB Atlas Network Access allows Railway's IP
 - In MongoDB Atlas: Go to Network Access → Add IP → allow all `0.0.0.0/0` (or specific Railway IPs)
 
