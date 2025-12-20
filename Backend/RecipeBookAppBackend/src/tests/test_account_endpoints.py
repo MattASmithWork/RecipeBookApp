@@ -143,8 +143,8 @@ class TestUserAccountEndpoints:
         sample_user_account["activityLevel"] = "super_duper_active"  # Invalid
         
         response = test_client.post("/accounts/create", json=sample_user_account)
-        assert response.status_code == 400
-        assert "Invalid activity level" in response.json()["detail"]
+        assert response.status_code == 422  # Pydantic validation error
+        assert "activity" in response.json()["detail"][0]["msg"].lower() or "activitylevel" in str(response.json()["detail"]).lower()
     
     @pytest.mark.integration
     def test_get_account_success(self, test_client, mock_db, sample_user_account):

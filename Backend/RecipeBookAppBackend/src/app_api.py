@@ -16,8 +16,8 @@ from connectToDataBase import get_database
 from model_to_dict import model_to_dict
 import httpx
 import json
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict
+from datetime import datetime, timezone
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -313,9 +313,9 @@ class Recipe(BaseModel):
     """Schema for personal recipe data with input validation"""
     name: str = Field(..., min_length=1, max_length=200)
     # Support both old string format and new structured format for backwards compatibility
-    ingredients: List[str] = Field(..., min_items=1, max_items=100)  # Legacy format: ["2kg chicken", "1L milk"]
+    ingredients: List[str] = Field(..., min_length=1, max_length=100)  # Legacy format: ["2kg chicken", "1L milk"]
     ingredientsDetailed: Optional[List[RecipeIngredient]] = None  # New format with measurements
-    instructions: List[str] = Field(..., min_items=1, max_items=100)
+    instructions: List[str] = Field(..., min_length=1, max_length=100)
     prep_time: int = Field(..., ge=0, le=10000)
     cook_time: int = Field(..., ge=0, le=10000)
     servings: int = Field(..., ge=1, le=100)
@@ -361,6 +361,7 @@ class ShoppingItem(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     addedBy: Optional[str] = Field(None, max_length=100)
     addedAt: Optional[str] = None
+    bought: Optional[bool] = Field(False)  # Track if item has been purchased
     # Barcode and nutrition fields
     barcode: Optional[str] = Field(None, max_length=50)  # Product barcode (UPC/EAN)
     calories: Optional[float] = Field(None, ge=0, le=10000)  # Calories per serving
@@ -517,6 +518,20 @@ class UserAccount(BaseModel):
         """Ensure username is lowercase and valid"""
         return v.lower().strip()
 
+class UserAccountUpdate(BaseModel):
+    """Partial update model for user account - all fields optional"""
+    username: Optional[str] = Field(None, min_length=1, max_length=50, pattern='^[a-zA-Z0-9_]+$')
+    displayName: Optional[str] = Field(None, min_length=1, max_length=100)
+    email: Optional[str] = Field(None, max_length=200)
+    age: Optional[int] = Field(None, ge=1, le=150)
+    gender: Optional[str] = Field(None, pattern='^(male|female)$')
+    weight: Optional[float] = Field(None, gt=0, le=500)
+    height: Optional[float] = Field(None, gt=0, le=300)
+    activityLevel: Optional[str] = Field(
+        None, 
+        pattern='^(sedentary|lightly_active|moderately_active|very_active|extremely_active)$'
+    )
+
 class WeightEntry(BaseModel):
     """Monthly weight measurement for tracking progress"""
     username: str = Field(..., min_length=1, max_length=50)
@@ -551,10 +566,10 @@ def add_recipe(request: Request, recipe: Recipe):
     """
     Create a new personal recipe.
     Args: recipe - Recipe object with all required fields
-    Returns: {"id": "<mongo_object_id>"}
+    Returns: {"id": "<mongo_object_id>", "message": "Recipe added successfully!"}
     """
     inserted = recipes.insert_one(model_to_dict(recipe))
-    return {"id": str(inserted.inserted_id)}
+    return {"id": str(inserted.inserted_id), "message": "Recipe added successfully!"}
 
 @app.get("/recipes/{user}")
 @limiter.limit("30/minute")
@@ -562,13 +577,16 @@ def get_recipes(request: Request, user: str):
     """
     Get all recipes for a specific user.
     Args: user - Username to filter recipes
-    Returns: List of recipe objects with _id converted to string
+    Returns: Object with total_count and recipes list
     """
     data = list(recipes.find({"user": user}))
     # Convert MongoDB ObjectId to string for JSON serialization
     for d in data:
         d["_id"] = str(d["_id"])
-    return data
+    return {
+        "total_count": len(data),
+        "recipes": data
+    }
 
 @app.put("/recipes/{id}")
 @limiter.limit("20/minute")
@@ -588,17 +606,19 @@ def update_recipe(request: Request, id: str, recipe: Recipe):
 
 @app.delete("/recipes/{id}")
 @limiter.limit("10/minute")
-def delete_recipe(request: Request, id: str):
+def delete_recipe(request: Request, id: str, user: str):
     """
-    Delete a recipe by ID.
-    Args: id - MongoDB ObjectId as string
-    Returns: {"message": "Recipe deleted"}
+    Delete a recipe by ID if it belongs to the user.
+    Args: 
+        id - MongoDB ObjectId as string
+        user - Username of recipe owner (for authorization)
+    Returns: {"message": "Recipe deleted successfully!"}
     """
     object_id = validate_object_id(id, "recipe")
-    result = recipes.delete_one({"_id": object_id})
+    result = recipes.delete_one({"_id": object_id, "user": user})
     if result.deleted_count == 0:
-        raise HTTPException(404, "Recipe not found")
-    return {"message": "Recipe deleted"}
+        raise HTTPException(404, "Recipe not found or you don't have permission to delete it")
+    return {"message": "Recipe deleted successfully!"}
 
 @app.get("/recipes/fetch-from-github")
 @limiter.limit("5/hour")
@@ -690,20 +710,50 @@ async def fetch_recipes_from_github(request: Request):
         )
 
 
+@app.get("/github-recipes")
+@limiter.limit("5/hour")
+async def get_github_recipes(request: Request):
+    """
+    Alias endpoint for fetching community recipes from GitHub.
+    Returns recipes in a standardized format compatible with frontend expectations.
+    Rate limited to 5 requests per hour.
+    
+    Returns: {
+        "total_count": int,
+        "recipes": [...],
+        "statistics": {...}
+    }
+    """
+    # Reuse the existing GitHub fetch logic
+    result = await fetch_recipes_from_github(request)
+    
+    # Transform to match expected format
+    return {
+        "total_count": len(result["recipes"]),
+        "recipes": result["recipes"],
+        "statistics": result.get("statistics"),
+        "errors": result.get("errors")
+    }
+
+
 # === Shopping List Endpoints (Multi-user shared shopping list) ===
 
-@app.get("/shopping-list")
+@app.get("/shopping-list/{user}")
 @limiter.limit("30/minute")
-def get_shopping_list(request: Request):
+def get_shopping_list(request: Request, user: str):
     """
-    Get all items in the shared shopping list.
-    Returns: Array of shopping items with _id as string
+    Get all shopping list items for a specific user.
+    Args: user - Username to filter items
+    Returns: Object with total_count and items list
     """
-    items = list(shopping_list.find())
+    items = list(shopping_list.find({"addedBy": user}))
     # Convert ObjectId to string for JSON serialization
     for item in items:
         item["_id"] = str(item["_id"])
-    return items
+    return {
+        "total_count": len(items),
+        "items": items
+    }
 
 @app.post("/shopping-list")
 @limiter.limit("20/minute")
@@ -712,13 +762,13 @@ def add_shopping_item(request: Request, item: ShoppingItem):
     Add a new item to the shopping list.
     Automatically adds timestamp when item is created.
     Args: item - ShoppingItem with name, quantity, and optional price/category
-    Returns: {"id": "<item_id>", "message": "Item added to shopping list"}
+    Returns: {"id": "<item_id>", "message": "Item added to shopping list!"}
     """
     item_dict = model_to_dict(item)
     # Add server timestamp
-    item_dict["addedAt"] = datetime.utcnow().isoformat()
+    item_dict["addedAt"] = datetime.now(timezone.utc).isoformat()
     inserted = shopping_list.insert_one(item_dict)
-    return {"id": str(inserted.inserted_id), "message": "Item added to shopping list"}
+    return {"id": str(inserted.inserted_id), "message": "Item added to shopping list!"}
 
 @app.put("/shopping-list/{id}")
 @limiter.limit("20/minute")
@@ -741,21 +791,23 @@ def update_shopping_item(request: Request, id: str, item: ShoppingItem):
 
 @app.delete("/shopping-list/{id}")
 @limiter.limit("20/minute")
-def delete_shopping_item(request: Request, id: str):
+def delete_shopping_item(request: Request, id: str, user: str):
     """
     Remove an item from the shopping list (item no longer needed).
-    Args: id - Item's MongoDB ObjectId as string
-    Returns: {"message": "Shopping item removed"}
+    Args: 
+        id - Item's MongoDB ObjectId as string
+        user - Username of item owner (for authorization)
+    Returns: {"message": "Shopping item deleted successfully!"}
     """
     object_id = validate_object_id(id, "shopping item")
-    result = shopping_list.delete_one({"_id": object_id})
+    result = shopping_list.delete_one({"_id": object_id, "addedBy": user})
     if result.deleted_count == 0:
-        raise HTTPException(404, "Shopping item not found")
-    return {"message": "Shopping item removed"}
+        raise HTTPException(404, "Shopping item not found or you don't have permission to delete it")
+    return {"message": "Shopping item deleted successfully!"}
 
-@app.post("/shopping-list/{id}/mark-bought")
+@app.put("/shopping-list/{id}/mark-bought")
 @limiter.limit("20/minute")
-def mark_item_bought(request: Request, id: str, purchasedBy: Optional[str] = None):
+def mark_item_bought(request: Request, id: str, user: str, purchasedBy: Optional[str] = None):
     """
     Mark a shopping list item as bought and move it to inventory atomically.
     Uses MongoDB transaction to ensure data consistency and prevent race conditions.
@@ -781,10 +833,10 @@ def mark_item_bought(request: Request, id: str, purchasedBy: Optional[str] = Non
         # Start a transaction to ensure atomic operation
         with client.start_session() as session:
             with session.start_transaction():
-                # Step 1: Find and validate item exists
-                item = shopping_list.find_one({"_id": object_id}, session=session)
+                # Step 1: Find and validate item exists and belongs to user
+                item = shopping_list.find_one({"_id": object_id, "addedBy": user}, session=session)
                 if not item:
-                    raise HTTPException(404, "Shopping item not found")
+                    raise HTTPException(404, "Shopping item not found or you don't have permission to modify it")
                 
                 # Step 2: Create inventory item with purchase metadata
                 inventory_item = {
@@ -793,8 +845,9 @@ def mark_item_bought(request: Request, id: str, purchasedBy: Optional[str] = Non
                     "amount": item.get("amount", 1.0),
                     "unit": item.get("unit", "unit"),
                     "category": item.get("category"),
-                    "purchasedAt": datetime.utcnow().isoformat(),
-                    "purchasedBy": purchasedBy,
+                    "user": user,  # Set owner
+                    "purchasedAt": datetime.now(timezone.utc).isoformat(),
+                    "purchasedBy": purchasedBy or user,
                     # Preserve nutrition data if available
                     "barcode": item.get("barcode"),
                     "calories": item.get("calories"),
@@ -925,18 +978,63 @@ async def lookup_barcode(request: Request, barcode: str):
 
 # === Inventory (Items Owned) Endpoints ===
 
-@app.get("/inventory")
+@app.get("/inventory/low-stock")
 @limiter.limit("30/minute")
-def get_inventory(request: Request):
+def get_low_stock_items(request: Request):
     """
-    Get all items currently in inventory (what you have in stock).
-    Returns: Array of inventory items with _id as string
+    Get all inventory items that are below their low stock threshold.
+    Useful for generating shopping lists or alerts.
+    
+    Returns: Array of items below threshold with details:
+    [{
+        "_id": "...",
+        "name": "chicken",
+        "amount": 0.5,
+        "unit": "kg",
+        "lowStockThreshold": 1.0,
+        "percentRemaining": 50.0
+    }]
     """
-    items = list(items_owned.find())
+    # Find all items where amount <= lowStockThreshold
+    low_stock_items = []
+    
+    for item in items_owned.find():
+        threshold = item.get("lowStockThreshold")
+        amount = item.get("amount", 0)
+        
+        if threshold and amount <= threshold:
+            low_stock_items.append({
+                "_id": str(item["_id"]),
+                "name": item["name"],
+                "amount": amount,
+                "unit": item.get("unit", ""),
+                "lowStockThreshold": threshold,
+                "percentRemaining": (amount / threshold * 100) if threshold > 0 else 0,
+                "category": item.get("category"),
+                "purchasedAt": item.get("purchasedAt")
+            })
+    
+    return {
+        "lowStockItems": low_stock_items,
+        "count": len(low_stock_items)
+    }
+
+@app.get("/inventory/{user}")
+@limiter.limit("30/minute")
+def get_inventory(request: Request, user: str):
+    """
+    Get all items currently in inventory for a specific user.
+    Args: user - Username to filter items
+    Returns: Object with total_count and items list
+    """
+    items = list(items_owned.find({"user": user}))
     # Convert ObjectId to string for JSON serialization
     for item in items:
         item["_id"] = str(item["_id"])
-    return items
+    return {
+        "total_count": len(items),
+        "items": items
+    }
 
 @app.post("/inventory")
 @limiter.limit("20/minute")
@@ -946,14 +1044,39 @@ def add_inventory_item(request: Request, item: InventoryItem):
     Useful for adding items you already own.
     
     Args: item - InventoryItem with name, quantity, and optional metadata
-    Returns: {"id": "<item_id>", "message": "Item added to inventory"}
+    Returns: {"id": "<item_id>", "message": "Item added to inventory!"}
     """
     item_dict = model_to_dict(item)
     # Add timestamp if not provided
     if not item_dict.get("purchasedAt"):
-        item_dict["purchasedAt"] = datetime.utcnow().isoformat()
+        item_dict["purchasedAt"] = datetime.now(timezone.utc).isoformat()
     inserted = items_owned.insert_one(item_dict)
-    return {"id": str(inserted.inserted_id), "message": "Item added to inventory"}
+    return {"id": str(inserted.inserted_id), "message": "Item added to inventory!"}
+
+class UpdateAmountRequest(BaseModel):
+    """Request to update inventory item amount"""
+    itemId: str = Field(..., min_length=1)
+    amount: float = Field(..., gt=0, le=10000)
+
+
+@app.put("/inventory/update-amount")
+@limiter.limit("20/minute")
+def update_inventory_amount(request: Request, update: UpdateAmountRequest):
+    """
+    Update the amount of an inventory item.
+    Args:
+        update - UpdateAmountRequest with itemId and new amount
+    Returns: {"message": "Inventory amount updated successfully!"}
+    """
+    object_id = validate_object_id(update.itemId, "inventory item")
+    result = items_owned.update_one(
+        {"_id": object_id},
+        {"$set": {"amount": update.amount}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Inventory item not found")
+    return {"message": "Inventory amount updated successfully!"}
+
 
 @app.put("/inventory/{id}")
 @limiter.limit("20/minute")
@@ -976,24 +1099,26 @@ def update_inventory_item(request: Request, id: str, item: InventoryItem):
 
 @app.delete("/inventory/{id}")
 @limiter.limit("20/minute")
-def delete_inventory_item(request: Request, id: str):
+def delete_inventory_item(request: Request, id: str, user: str):
     """
     Remove an item from inventory (item has been used up or discarded).
-    Args: id - Item's MongoDB ObjectId as string
-    Returns: {"message": "Inventory item removed"}
+    Args: 
+        id - Item's MongoDB ObjectId as string
+        user - Username of item owner (for authorization)
+    Returns: {"message": "Inventory item deleted successfully!"}
     """
     object_id = validate_object_id(id, "inventory item")
-    result = items_owned.delete_one({"_id": object_id})
+    result = items_owned.delete_one({"_id": object_id, "user": user})
     if result.deleted_count == 0:
-        raise HTTPException(404, "Inventory item not found")
-    return {"message": "Inventory item removed"}
+        raise HTTPException(404, "Inventory item not found or you don't have permission to delete it")
+    return {"message": "Inventory item deleted successfully!"}
 
 
 # === New Inventory Management Endpoints ===
 
 class ConsumeIngredientRequest(BaseModel):
     """Request to consume/use ingredients from inventory"""
-    ingredientName: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=200)  # Changed from ingredientName to match tests
     amount: float = Field(..., gt=0, le=10000)
     unit: str = Field(..., min_length=1, max_length=20)
     
@@ -1009,7 +1134,6 @@ class ConsumeIngredientRequest(BaseModel):
 
 class ConsumeRecipeRequest(BaseModel):
     """Request to consume all ingredients needed for a recipe"""
-    recipeId: str = Field(..., min_length=1)
     servingsMultiplier: Optional[float] = Field(1.0, gt=0, le=10)  # Scale recipe (e.g., 2.0 for double)
 
 class UpdateInventoryAmountRequest(BaseModel):
@@ -1035,7 +1159,7 @@ def consume_ingredient(request: Request, consumeRequest: ConsumeIngredientReques
         "lowStockThreshold": float  # If lowStock is true
     }
     """
-    ingredient_name = consumeRequest.ingredientName.strip().lower()
+    ingredient_name = consumeRequest.name.strip().lower()
     amount_to_consume = consumeRequest.amount
     unit = consumeRequest.unit.lower()
     
@@ -1043,22 +1167,31 @@ def consume_ingredient(request: Request, consumeRequest: ConsumeIngredientReques
     item = items_owned.find_one({"name": {"$regex": f"^{ingredient_name}$", "$options": "i"}})
     
     if not item:
-        raise HTTPException(404, f"Ingredient '{consumeRequest.ingredientName}' not found in inventory")
+        raise HTTPException(404, f"Ingredient '{consumeRequest.name}' not found in inventory")
     
     # Check if units match
     if item.get("unit", "").lower() != unit:
         raise HTTPException(
             400, 
-            f"Unit mismatch: '{consumeRequest.ingredientName}' is stored in '{item.get('unit')}', but you're trying to consume in '{unit}'"
+            f"Unit mismatch: '{consumeRequest.name}' is stored in '{item.get('unit')}', but you're trying to consume in '{unit}'"
         )
     
     current_amount = item.get("amount", 0)
+    
+    # Check if sufficient amount available
+    if amount_to_consume > current_amount:
+        raise HTTPException(
+            400,
+            f"Insufficient amount: Only {current_amount} {unit} of '{consumeRequest.name}' available, cannot consume {amount_to_consume} {unit}"
+        )
+    
     new_amount = current_amount - amount_to_consume
     
     response = {
-        "message": f"Consumed {amount_to_consume}{unit} from {consumeRequest.ingredientName}",
+        "message": "Ingredient consumed successfully!",
         "previousAmount": current_amount,
         "consumedAmount": amount_to_consume,
+        "newAmount": new_amount,  # Match test expectations
         "remainingAmount": new_amount,
         "removed": False,
         "lowStock": False
@@ -1068,8 +1201,9 @@ def consume_ingredient(request: Request, consumeRequest: ConsumeIngredientReques
     if new_amount <= 0:
         items_owned.delete_one({"_id": item["_id"]})
         response["removed"] = True
+        response["newAmount"] = 0
         response["remainingAmount"] = 0
-        response["message"] = f"Consumed all {consumeRequest.ingredientName} - removed from inventory"
+        response["message"] = f"Consumed all {consumeRequest.name} - removed from inventory"
     else:
         # Update amount in inventory
         items_owned.update_one(
@@ -1218,47 +1352,6 @@ def consume_recipe(request: Request, recipe_id: str, consumeRequest: Optional[Co
     
     return response
 
-@app.get("/inventory/low-stock")
-@limiter.limit("30/minute")
-def get_low_stock_items(request: Request):
-    """
-    Get all inventory items that are below their low stock threshold.
-    Useful for generating shopping lists or alerts.
-    
-    Returns: Array of items below threshold with details:
-    [{
-        "_id": "...",
-        "name": "chicken",
-        "amount": 0.5,
-        "unit": "kg",
-        "lowStockThreshold": 1.0,
-        "percentRemaining": 50.0
-    }]
-    """
-    # Find all items where amount <= lowStockThreshold
-    low_stock_items = []
-    
-    for item in items_owned.find():
-        threshold = item.get("lowStockThreshold")
-        amount = item.get("amount", 0)
-        
-        if threshold and amount <= threshold:
-            low_stock_items.append({
-                "_id": str(item["_id"]),
-                "name": item["name"],
-                "amount": amount,
-                "unit": item.get("unit", ""),
-                "lowStockThreshold": threshold,
-                "percentRemaining": (amount / threshold * 100) if threshold > 0 else 0,
-                "category": item.get("category"),
-                "purchasedAt": item.get("purchasedAt")
-            })
-    
-    return {
-        "lowStockItems": low_stock_items,
-        "count": len(low_stock_items)
-    }
-
 @app.patch("/inventory/{id}/amount")
 @limiter.limit("30/minute")
 def update_inventory_amount(request: Request, id: str, updateRequest: UpdateInventoryAmountRequest):
@@ -1330,16 +1423,16 @@ def log_meal(request: Request, meal: MealLog):
     Args:
         meal - MealLog with user, date, meal type, nutrition info
     
-    Returns: {"id": "<meal_log_id>", "message": "Meal logged successfully"}
+    Returns: {"id": "<meal_log_id>", "message": "Meal logged successfully!"}
     """
     meal_dict = model_to_dict(meal)
     # Add server timestamp
-    meal_dict["loggedAt"] = datetime.utcnow().isoformat()
+    meal_dict["loggedAt"] = datetime.now(timezone.utc).isoformat()
     
     inserted = nutrition_logs.insert_one(meal_dict)
     return {
         "id": str(inserted.inserted_id),
-        "message": "Meal logged successfully"
+        "message": "Meal logged successfully!"
     }
 
 @app.get("/nutrition/logs/{user}")
@@ -1461,14 +1554,17 @@ def get_daily_nutrition_summary(request: Request, user: str, date: str):
             "caloriesPercent": (totals["calories"] / goals["dailyCalories"] * 100) if goals["dailyCalories"] > 0 else 0,
             "proteinPercent": (totals["protein"] / goals["dailyProtein"] * 100) if goals["dailyProtein"] > 0 else 0,
             "carbsPercent": (totals["carbs"] / goals["dailyCarbs"] * 100) if goals["dailyCarbs"] > 0 else 0,
-            "fatPercent": (totals["fat"] / goals["dailyFat"] * 100) if goals["dailyFat"] > 0 else 0,
-            "remaining": {
-                "calories": goals["dailyCalories"] - totals["calories"],
-                "protein": goals["dailyProtein"] - totals["protein"],
-                "carbs": goals["dailyCarbs"] - totals["carbs"],
-                "fat": goals["dailyFat"] - totals["fat"]
-            }
+            "fatPercent": (totals["fat"] / goals["dailyFat"] * 100) if goals["dailyFat"] > 0 else 0
         }
+        
+        remaining = {
+            "calories": goals["dailyCalories"] - totals["calories"],
+            "protein": goals["dailyProtein"] - totals["protein"],
+            "carbs": goals["dailyCarbs"] - totals["carbs"],
+            "fat": goals["dailyFat"] - totals["fat"]
+        }
+    else:
+        remaining = None
     
     return {
         "date": date,
@@ -1482,27 +1578,40 @@ def get_daily_nutrition_summary(request: Request, user: str, date: str):
         "meals": meals,
         "mealCount": len(meals),
         "goals": goals,
-        "progress": progress
+        "progress": progress,
+        "remaining": remaining
     }
+
+class MealLogUpdate(BaseModel):
+    """Partial update for meal log"""
+    nutrition: Optional[Dict] = None
+    notes: Optional[str] = Field(None, max_length=500)
+
 
 @app.put("/nutrition/log/{id}")
 @limiter.limit("20/minute")
-def update_meal_log(request: Request, id: str, meal: MealLog):
+def update_meal_log(request: Request, id: str, update: MealLogUpdate):
     """
-    Update an existing meal log.
+    Update an existing meal log (partial update supported).
     Args:
         id - Meal log's MongoDB ObjectId
-        meal - Updated meal data
-    Returns: {"message": "Meal log updated"}
+        update - Fields to update
+    Returns: {"message": "Meal log updated successfully!"}
     """
     object_id = validate_object_id(id, "meal log")
+    
+    update_fields = update.model_dump(exclude_none=True)
+    
+    if not update_fields:
+        raise HTTPException(400, "No update fields provided")
+    
     result = nutrition_logs.update_one(
         {"_id": object_id},
-        {"$set": model_to_dict(meal)}
+        {"$set": update_fields}
     )
     if result.matched_count == 0:
         raise HTTPException(404, "Meal log not found")
-    return {"message": "Meal log updated"}
+    return {"message": "Meal log updated successfully!"}
 
 @app.delete("/nutrition/log/{id}")
 @limiter.limit("20/minute")
@@ -1510,13 +1619,13 @@ def delete_meal_log(request: Request, id: str):
     """
     Delete a meal log.
     Args: id - Meal log's MongoDB ObjectId
-    Returns: {"message": "Meal log deleted"}
+    Returns: {"message": "Meal log deleted successfully!"}
     """
     object_id = validate_object_id(id, "meal log")
     result = nutrition_logs.delete_one({"_id": object_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Meal log not found")
-    return {"message": "Meal log deleted"}
+    return {"message": "Meal log deleted successfully!"}
 
 @app.post("/nutrition/goals")
 @limiter.limit("10/minute")
@@ -1538,9 +1647,9 @@ def set_nutrition_goals(request: Request, goals: UserNutritionGoals):
     )
     
     if result.upserted_id:
-        return {"message": "Nutrition goals created", "id": str(result.upserted_id)}
+        return {"message": "Nutrition goals set successfully!", "id": str(result.upserted_id)}
     else:
-        return {"message": "Nutrition goals updated"}
+        return {"message": "Nutrition goals set successfully!"}
 
 @app.get("/nutrition/goals/{user}")
 @limiter.limit("30/minute")
@@ -1589,7 +1698,7 @@ def get_weekly_nutrition_summary(
     if endDate:
         end = datetime.fromisoformat(endDate.split('T')[0])
     else:
-        end = datetime.utcnow()
+        end = datetime.now(timezone.utc)
     
     # Calculate start date (7 days before end)
     start = end - timedelta(days=6)
@@ -1723,7 +1832,7 @@ async def create_account(request: Request, account: UserAccount):
         
         return {
             "id": str(result.inserted_id),
-            "message": "Account created successfully",
+            "message": "Account created successfully!",
             "username": account.username.lower(),
             "bmr": bmr,
             "bmi": bmi,
@@ -1765,83 +1874,101 @@ async def get_account(request: Request, username: str):
 
 @app.put("/accounts/{username}")
 @limiter.limit("20/minute")
-async def update_account(request: Request, username: str, account: UserAccount):
+async def update_account(request: Request, username: str, account: UserAccountUpdate):
     """
-    Update user account and recalculate health metrics.
+    Update user account (partial updates supported) and recalculate health metrics.
     Useful when user's weight, height, age, or activity level changes.
     
     Args:
         username: Username to update
-        account: Updated account data
+        account: Partial account data (only include fields you want to update)
     
     Returns:
         Updated account with recalculated BMR, BMI, and calories
     """
     try:
-        # Ensure username matches
-        if username.lower() != account.username.lower():
-            raise HTTPException(status_code=400, detail="Username mismatch")
-        
         # Check if account exists
         existing = user_accounts.find_one({"username": username.lower()})
         if not existing:
             raise HTTPException(status_code=404, detail="Account not found")
         
-        # Recalculate health metrics
-        bmr = calculate_bmr(account.weight, account.height, account.age, account.gender)
-        bmi = calculate_bmi(account.weight, account.height)
-        daily_calories = calculate_daily_calories(bmr, account.activityLevel)
-        bmi_category = get_bmi_category(bmi)
+        # Build update document with only provided fields
+        update_fields = account.model_dump(exclude_none=True)
         
-        # Prepare update document
-        account_dict = account.model_dump()
-        account_dict["updatedAt"] = datetime.now().isoformat()
-        account_dict["bmr"] = bmr
-        account_dict["bmi"] = bmi
-        account_dict["bmiCategory"] = bmi_category
-        account_dict["recommendedDailyCalories"] = daily_calories
-        # Keep original createdAt
-        account_dict["createdAt"] = existing.get("createdAt")
+        # If username is being updated, ensure it matches
+        if "username" in update_fields:
+            if username.lower() != update_fields["username"].lower():
+                raise HTTPException(status_code=400, detail="Username mismatch")
+        
+        # Merge with existing data to calculate metrics
+        merged_account = {**existing, **update_fields}
+        
+        # Recalculate health metrics if relevant fields changed
+        if any(field in update_fields for field in ['weight', 'height', 'age', 'gender', 'activityLevel']):
+            bmr = calculate_bmr(
+                merged_account["weight"], 
+                merged_account["height"], 
+                merged_account["age"], 
+                merged_account["gender"]
+            )
+            bmi = calculate_bmi(merged_account["weight"], merged_account["height"])
+            daily_calories = calculate_daily_calories(bmr, merged_account["activityLevel"])
+            bmi_category = get_bmi_category(bmi)
+            
+            update_fields["bmr"] = bmr
+            update_fields["bmi"] = bmi
+            update_fields["bmiCategory"] = bmi_category
+            update_fields["recommendedDailyCalories"] = daily_calories
+        else:
+            daily_calories = existing.get("recommendedDailyCalories")
+        
+        update_fields["updatedAt"] = datetime.now().isoformat()
+
         
         # Update in database
+        # Update account
         user_accounts.update_one(
             {"username": username.lower()},
-            {"$set": account_dict}
+            {"$set": update_fields}
         )
         
         # If weight changed, add new weight entry
-        if account.weight != existing.get("weight"):
+        if "weight" in update_fields and update_fields["weight"] != existing.get("weight"):
             weight_entry = {
                 "username": username.lower(),
-                "weight": account.weight,
+                "weight": update_fields["weight"],
                 "date": datetime.now().strftime('%Y-%m-%d'),
                 "notes": "Weight updated from account profile"
             }
             weight_tracking.insert_one(weight_entry)
         
-        # Update nutrition goals based on new calorie recommendations
-        protein_cals = daily_calories * 0.30
-        carbs_cals = daily_calories * 0.40
-        fat_cals = daily_calories * 0.30
+        # Update nutrition goals if calories were recalculated
+        if any(field in update_fields for field in ['weight', 'height', 'age', 'gender', 'activityLevel']):
+            protein_cals = daily_calories * 0.30
+            carbs_cals = daily_calories * 0.40
+            fat_cals = daily_calories * 0.30
+            
+            user_nutrition_goals.update_one(
+                {"user": username.lower()},
+                {"$set": {
+                    "dailyCalories": daily_calories,
+                    "dailyProtein": protein_cals / 4,
+                    "dailyCarbs": carbs_cals / 4,
+                    "dailyFat": fat_cals / 9
+                }},
+                upsert=True
+            )
         
-        user_nutrition_goals.update_one(
-            {"user": username.lower()},
-            {"$set": {
-                "dailyCalories": daily_calories,
-                "dailyProtein": protein_cals / 4,
-                "dailyCarbs": carbs_cals / 4,
-                "dailyFat": fat_cals / 9
-            }},
-            upsert=True
-        )
+        # Fetch updated account for response
+        updated_account = user_accounts.find_one({"username": username.lower()})
         
         return {
-            "message": "Account updated successfully",
+            "message": "Account updated successfully!",
             "username": username.lower(),
-            "bmr": bmr,
-            "bmi": bmi,
-            "bmiCategory": bmi_category,
-            "recommendedDailyCalories": daily_calories
+            "bmr": updated_account.get("bmr"),
+            "bmi": updated_account.get("bmi"),
+            "bmiCategory": updated_account.get("bmiCategory"),
+            "recommendedDailyCalories": updated_account.get("recommendedDailyCalories")
         }
     
     except HTTPException:
@@ -1927,7 +2054,7 @@ async def log_weight(request: Request, entry: WeightEntry):
         
         return {
             "id": str(result.inserted_id),
-            "message": "Weight logged successfully",
+            "message": "Weight logged successfully!",
             "newBmi": bmi,
             "bmiCategory": bmi_category
         }
@@ -1963,13 +2090,13 @@ async def get_weight_history(request: Request, username: str, startDate: Optiona
             if endDate:
                 query["date"]["$lte"] = endDate
         
-        # Get entries sorted by date
+        # Get entries sorted by date ascending for calculation
         entries = list(weight_tracking.find(query).sort("date", 1))
         
         if not entries:
             return []
         
-        # Convert ObjectId to string and calculate changes
+        # Convert ObjectId to string and calculate changes (in chronological order)
         for i, entry in enumerate(entries):
             entry["_id"] = str(entry["_id"])
             
@@ -1983,7 +2110,8 @@ async def get_weight_history(request: Request, username: str, startDate: Optiona
                 entry["weightChange"] = 0
                 entry["weightChangePercentage"] = 0
         
-        return entries
+        # Return in descending order (newest first)
+        return list(reversed(entries))
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching weight history: {str(e)}")
@@ -2035,7 +2163,8 @@ async def get_weight_stats(request: Request, username: str):
         if len(entries) < 2:
             return {
                 "message": "Not enough data for statistics. Log at least 2 weight entries.",
-                "entryCount": len(entries)
+                "entryCount": len(entries),
+                "currentTrend": "insufficient_data"
             }
         
         # Calculate statistics
@@ -2061,15 +2190,17 @@ async def get_weight_stats(request: Request, username: str):
         lowest_weight = min(weights)
         
         # Current weight trend (last 3 entries)
+        # Consider stable if change is less than 0.5kg
+        STABLE_THRESHOLD = 0.5
         if len(entries) >= 3:
             recent_entries = entries[-3:]
             recent_trend = recent_entries[-1]["weight"] - recent_entries[0]["weight"]
-            if recent_trend > 0:
-                trend = "gaining"
-            elif recent_trend < 0:
-                trend = "losing"
-            else:
+            if abs(recent_trend) < STABLE_THRESHOLD:
                 trend = "stable"
+            elif recent_trend > 0:
+                trend = "gaining"
+            else:
+                trend = "losing"
         else:
             trend = "insufficient_data"
         

@@ -1,19 +1,63 @@
-# Ignore password files
+# ===== SECURITY: Ignore all sensitive files =====
+# Passwords and credentials
 password.txt
+**/password.txt
+*.key
+*.pem
+*.crt
 
-# Ignore sensitive documentation files
+# Environment files with secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# ===== DOCUMENTATION: Only allow README.md files =====
+# Ignore ALL .md files
+*.md
+# Then explicitly allow README.md files anywhere
+!README.md
+!**/README.md
+
+# Ignore ALL .txt files except requirements
+*.txt
+# Allow requirements files
+!requirements.txt
+!requirements-*.txt
+!**/requirements.txt
+!**/requirements-*.txt
+
+# Ignore security and deployment documentation
+SECURITY_*.md
+SECURITY_*.txt
 **/RAILWAY_DEPLOYMENT.md
 **/BACKEND_SETUP.md
+**/README_RAILWAY.md
 
-# Ignore environment files
-**/.env
-**/.env.local
+# ===== BUILD & DEPENDENCIES =====
+/build/
+/dist/
+/node_modules/
 
-# Ignore log files
-*.log
-SECURITY_FIXES.md 
-SECURITY_IMPLEMENTATIONS.md
-UNIT_BASED_INVENTORY.md
-NUTRITION_TRACKING.md
-# Ignore temporary files
-*.tmp
+# Ignore IDE specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+*.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pyre/
+.mypy_cache/

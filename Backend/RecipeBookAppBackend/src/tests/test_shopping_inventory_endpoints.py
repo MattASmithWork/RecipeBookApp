@@ -201,10 +201,11 @@ class TestInventoryEndpoints:
         
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 2  # Flour and Salt are low
+        low_stock_items = data.get("lowStockItems", data)  # Handle both formats
+        assert len(low_stock_items) == 2  # Flour and Salt are low
         
         # Check percentRemaining is calculated
-        for item in data:
+        for item in low_stock_items:
             assert "percentRemaining" in item
             assert item["percentRemaining"] < 100
     
@@ -245,10 +246,15 @@ class TestRecipeConsumption:
     @pytest.mark.integration
     def test_consume_recipe_success(self, test_client, mock_db):
         """Test consuming all ingredients for a recipe."""
-        # Create recipe
+        # Create recipe with detailed ingredients
         recipe = {
             "name": "Simple Pasta",
             "ingredients": ["pasta", "tomato sauce", "cheese"],
+            "ingredientsDetailed": [
+                {"name": "pasta", "amount": 200, "unit": "g"},
+                {"name": "tomato sauce", "amount": 300, "unit": "ml"},
+                {"name": "cheese", "amount": 50, "unit": "g"}
+            ],
             "instructions": ["Cook pasta", "Add sauce", "Top with cheese"],
             "prep_time": 5,
             "cook_time": 15,
@@ -270,11 +276,10 @@ class TestRecipeConsumption:
         
         # Consume recipe
         consume_data = {
-            "recipeId": str(recipe_result.inserted_id),
-            "servings": 1
+            "servingsMultiplier": 1.0
         }
         
-        response = test_client.post("/inventory/consume-recipe", json=consume_data)
+        response = test_client.post(f"/inventory/consume-recipe/{str(recipe_result.inserted_id)}", json=consume_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -284,7 +289,7 @@ class TestRecipeConsumption:
     def test_consume_recipe_not_found(self, test_client):
         """Test consuming non-existent recipe."""
         fake_id = str(ObjectId())
-        consume_data = {"recipeId": fake_id, "servings": 1}
+        consume_data = {"servingsMultiplier": 1.0}
         
-        response = test_client.post("/inventory/consume-recipe", json=consume_data)
+        response = test_client.post(f"/inventory/consume-recipe/{fake_id}", json=consume_data)
         assert response.status_code == 404

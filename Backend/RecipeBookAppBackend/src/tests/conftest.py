@@ -23,6 +23,8 @@ def test_client() -> TestClient:
     Provides a test client for making API requests.
     Scope: function - new client for each test to ensure isolation.
     """
+    # Disable rate limiting for tests
+    app.state.limiter.enabled = False
     return TestClient(app)
 
 
@@ -31,20 +33,63 @@ def mock_db(monkeypatch) -> MongoClient:
     """
     Provides a mock MongoDB database using mongomock.
     Replaces the real database connection with an in-memory mock.
+    Includes transaction mock since mongomock doesn't support transactions.
     """
     from app_api import db as real_db
+    from unittest.mock import MagicMock
+    
     mock_client = MongoClient()
     mock_database = mock_client.recipe_book_test_db
     
+    # Mock transaction support (mongomock doesn't support transactions)
+    mock_transaction = MagicMock()
+    mock_transaction.__enter__ = MagicMock(return_value=None)
+    mock_transaction.__exit__ = MagicMock(return_value=None)
+    
+    mock_session = MagicMock()
+    mock_session.start_transaction = MagicMock(return_value=mock_transaction)
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=None)
+    
+    # Patch the client's start_session to return our mock
+    mock_client.start_session = MagicMock(return_value=mock_session)
+    
+    # Create wrapper for collections that ignores session parameter
+    class SessionIgnoringCollection:
+        def __init__(self, collection):
+            self._collection = collection
+            
+        def __getattr__(self, name):
+            attr = getattr(self._collection, name)
+            if callable(attr):
+                def wrapper(*args, **kwargs):
+                    # Remove session parameter if present
+                    kwargs.pop('session', None)
+                    return attr(*args, **kwargs)
+                return wrapper
+            return attr
+    
+    # Create a wrapper that has both database functionality and client access
+    mock_db_wrapper = type('MockDatabase', (), {})()
+    for attr in dir(mock_database):
+        if not attr.startswith('_'):
+            try:
+                setattr(mock_db_wrapper, attr, getattr(mock_database, attr))
+            except:
+                pass
+    # Add the collections with session-ignoring wrappers
+    mock_db_wrapper.__getitem__ = mock_database.__getitem__
+    mock_db_wrapper.client = mock_client
+    
     # Patch the database in app_api module
-    monkeypatch.setattr("app_api.db", mock_database)
-    monkeypatch.setattr("app_api.recipes", mock_database["recipes"])
-    monkeypatch.setattr("app_api.shopping_list", mock_database["shopping_list"])
-    monkeypatch.setattr("app_api.items_owned", mock_database["items_owned"])
-    monkeypatch.setattr("app_api.nutrition_logs", mock_database["nutrition_logs"])
-    monkeypatch.setattr("app_api.user_nutrition_goals", mock_database["user_nutrition_goals"])
-    monkeypatch.setattr("app_api.user_accounts", mock_database["user_accounts"])
-    monkeypatch.setattr("app_api.weight_tracking", mock_database["weight_tracking"])
+    monkeypatch.setattr("app_api.db", mock_db_wrapper)
+    monkeypatch.setattr("app_api.recipes", SessionIgnoringCollection(mock_database["recipes"]))
+    monkeypatch.setattr("app_api.shopping_list", SessionIgnoringCollection(mock_database["shopping_list"]))
+    monkeypatch.setattr("app_api.items_owned", SessionIgnoringCollection(mock_database["items_owned"]))
+    monkeypatch.setattr("app_api.nutrition_logs", SessionIgnoringCollection(mock_database["nutrition_logs"]))
+    monkeypatch.setattr("app_api.user_nutrition_goals", SessionIgnoringCollection(mock_database["user_nutrition_goals"]))
+    monkeypatch.setattr("app_api.user_accounts", SessionIgnoringCollection(mock_database["user_accounts"]))
+    monkeypatch.setattr("app_api.weight_tracking", SessionIgnoringCollection(mock_database["weight_tracking"]))
     
     return mock_database
 
@@ -69,7 +114,7 @@ def sample_shopping_item() -> Dict[str, Any]:
     return {
         "name": "Tomatoes",
         "amount": 5,
-        "unit": "pieces",
+        "unit": "piece",  # Changed from "pieces" to "piece" to match allowed units
         "estimatedPrice": 3.50,
         "category": "vegetables",
         "addedBy": "test_user",

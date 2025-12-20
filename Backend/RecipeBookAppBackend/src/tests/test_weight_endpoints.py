@@ -87,9 +87,15 @@ class TestWeightTrackingEndpoints:
         
         assert response.status_code == 200
         
-        # Verify notes saved
-        entry = mock_db["weight_tracking"].find_one({"username": sample_user_account["username"]})
-        assert entry["notes"] == weight_entry["notes"]
+        # Verify notes saved - find the specific entry with our notes
+        entries = list(mock_db["weight_tracking"].find({
+            "username": sample_user_account["username"],
+            "date": weight_entry["date"]
+        }))
+        # Should have the entry we just logged
+        matching_entry = next((e for e in entries if e.get("notes") == weight_entry["notes"]), None)
+        assert matching_entry is not None
+        assert matching_entry["weight"] == weight_entry["weight"]
     
     @pytest.mark.integration
     def test_get_weight_history_success(self, test_client, mock_db, sample_user_account):
