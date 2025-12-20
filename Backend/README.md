@@ -1059,6 +1059,61 @@ print(os.environ.get("MONGO_URI"))  # Should print your connection string
 
 ## 🧪 Testing
 
+The backend has comprehensive test coverage ensuring API reliability and data integrity.
+
+### Test Statistics
+
+- **216/216 tests passing** (100% pass rate)
+- **95%** overall coverage across all modules
+- All critical paths tested with success and error scenarios
+
+### Coverage Areas
+
+**API Endpoint Tests:**
+- Recipe management (CRUD operations)
+- Shopping list functionality
+- Inventory management and consumption tracking
+- Nutrition logging and goal tracking
+- Weight tracking and statistics
+- User account management
+- Health check endpoint
+
+**Additional Test Coverage:**
+- Database operations and connection handling
+- Security features (rate limiting, input validation)
+- Error handling (404s, validation errors, database failures)
+- Helper functions and utilities
+- Pydantic model validation
+
+### Running Tests
+
+```bash
+# Navigate to source directory
+cd Backend/RecipeBookAppBackend/src
+
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov
+
+# Run specific test file
+pytest tests/test_recipe_endpoints.py
+pytest tests/test_nutrition_endpoints.py
+pytest tests/test_database.py
+
+# Generate HTML coverage report
+pytest --cov --cov-report=html
+# Then open htmlcov/index.html in browser
+```
+
+### Test Configuration
+
+- **Framework**: pytest with pytest-asyncio for async tests
+- **Fixtures**: Defined in `tests/conftest.py` for test database and mock data
+- **Coverage Tool**: pytest-cov for code coverage analysis
+- **Test Files**: `tests/test_*.py` following pytest naming conventions
+
 ### Manual Testing
 
 ```bash

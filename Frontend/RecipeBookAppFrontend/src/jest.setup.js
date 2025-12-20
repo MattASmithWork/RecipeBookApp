@@ -1,5 +1,28 @@
 import '@testing-library/jest-native/extend-expect';
 
+// Mock problematic React Native modules with Flow syntax
+jest.mock('react-native/Libraries/vendor/emitter/EventEmitter');
+
+// Mock axios before any modules import it
+const mockAxiosInstance = {
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  patch: jest.fn(),
+  delete: jest.fn(),
+};
+
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    create: jest.fn(() => mockAxiosInstance),
+  },
+  ...mockAxiosInstance,
+}));
+
+// Export for tests to use
+global.mockAxiosInstance = mockAxiosInstance;
+
 // Mock Expo modules
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -18,14 +41,6 @@ jest.mock('expo-constants', () => ({
       apiUrl: 'http://localhost:8000',
     },
   },
-}));
-
-// Mock react-native modules
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
-
-// Mock Zustand store
-jest.mock('./app/utils/store', () => ({
-  useRecipeStore: jest.fn(),
 }));
 
 // Global test utilities

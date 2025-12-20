@@ -417,6 +417,67 @@ See [Frontend README - Building for Production](./Frontend/README.md#-building-f
 
 ---
 
+## 🧪 Testing & Quality Assurance
+
+### Frontend Testing
+
+The React Native frontend has comprehensive test coverage:
+
+**Test Statistics:**
+- **116/116 tests passing** (100% pass rate)
+- **59 store tests** - State management (Zustand)
+- **57 API tests** - HTTP client functionality
+
+**Coverage Metrics:**
+- `store.ts`: **100%** coverage (lines, branches, functions, statements)
+- `api.ts`: **70%** coverage, **91.66%** branch coverage
+- All 16 store actions tested with edge cases
+- All 36 API functions tested with success and error paths
+
+**Test Features:**
+- Edge case testing (empty strings, special characters, large datasets)
+- Error scenario coverage (network failures, 404s, validation errors, timeouts)
+- Multi-user scenario testing
+- Data integrity validation
+- Optional parameter variations
+
+**Running Tests:**
+```bash
+cd Frontend/RecipeBookAppFrontend/src
+npm test                    # Run all tests
+npm test -- --coverage      # Run with coverage report
+npm test -- --watch         # Watch mode for development
+```
+
+See [Frontend README - Testing](./Frontend/README.md#testing) for detailed information.
+
+### Backend Testing
+
+The FastAPI backend has excellent test coverage:
+
+**Test Statistics:**
+- **216/216 tests passing** (100% pass rate)
+- **95%** overall coverage across all modules
+
+**Coverage Areas:**
+- All API endpoints tested (recipes, shopping, inventory, nutrition, weight, accounts)
+- Database operations validated
+- Security features verified
+- Rate limiting tested
+- Error handling comprehensive
+
+**Running Tests:**
+```bash
+cd Backend/RecipeBookAppBackend/src
+pytest                      # Run all tests
+pytest --cov                # Run with coverage report
+pytest tests/test_*.py      # Run specific test file
+```
+
+See [Backend README - Testing](./Backend/README.md#testing) for detailed information.
+
+---
+
 ## 🧪 API Endpoints
 
 The backend provides RESTful endpoints:

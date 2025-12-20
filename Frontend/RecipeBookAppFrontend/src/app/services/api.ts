@@ -319,7 +319,6 @@ export interface WeightStats {
   firstDate: string;
   lastDate: string;
 }
-}
 
 // === Health Check ===
 
