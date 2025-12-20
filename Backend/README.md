@@ -181,6 +181,65 @@ When Railway deploys your app:
 
 ---
 
+## 🚀 Quick Start
+
+### Using the Bundled Virtual Environment
+
+The repository includes a pre-configured Python 3.13 virtual environment in `Backend/RecipeBookAppBackend/`.
+
+**1. Install Dependencies:**
+```bash
+Backend/RecipeBookAppBackend/bin/pip install -r Backend/RecipeBookAppBackend/src/requirements.txt
+```
+
+**2. Set up MongoDB:**
+
+Option A - **Local Docker** (requires Docker):
+```bash
+docker run -d --name recipe-mongo -p 27017:27017 mongo:6.0
+export MONGO_URI="mongodb://localhost:27017"
+```
+
+Option B - **MongoDB Atlas/Remote**: Set your connection string:
+```bash
+export MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/recipeDatabase"
+```
+
+**3. Run the API:**
+```bash
+cd Backend/RecipeBookAppBackend
+export MONGO_URI="<your mongo uri>"
+bin/python -m uvicorn src.app_api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**4. Quick API Tests:**
+
+Health check:
+```bash
+curl http://localhost:8000/health
+```
+
+Create a recipe for Matt:
+```bash
+curl -X POST http://localhost:8000/recipes/ \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test Recipe","ingredients":["salt"],"instructions":["mix"],"prep_time":5,"cook_time":10,"servings":2,"user":"matt"}'
+```
+
+List Matt's recipes:
+```bash
+curl http://localhost:8000/recipes/matt
+```
+
+Create a recipe for Nicole (separate user):
+```bash
+curl -X POST http://localhost:8000/recipes/ \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Nicole Recipe","ingredients":["pepper"],"instructions":["shake"],"prep_time":3,"cook_time":5,"servings":1,"user":"nicole"}'
+```
+
+---
+
 ## 🚀 Setup From Scratch
 
 ### Prerequisites

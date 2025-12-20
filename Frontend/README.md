@@ -820,6 +820,93 @@ All data syncs via MongoDB:
 - Mark item as bought → updates everywhere
 - Real-time updates across devices
 
+### 8. Ingredient Matching System
+
+**How It Works:**
+
+1. User adds ingredients manually (e.g., "tomato", "chicken", "pasta")
+2. App compares user ingredients against all recipes
+3. Recipes are categorized:
+   - ✅ **Can Cook:** 100% of ingredients available
+   - 🟡 **Close Match:** 80%+ of ingredients available (1-2 items short)
+
+**Matching Algorithm:**
+- Normalizes ingredient names (lowercase, trim whitespace)
+- Supports partial matches (e.g., "tomato" matches "cherry tomato")
+- Calculates match percentage for each recipe
+- Ranks by highest match percentage first
+
+### 9. Barcode Scanning & Nutrition
+
+**Workflow:**
+
+1. User taps "Scan Barcode" button in shopping list
+2. Camera opens with barcode detection overlay
+3. App scans barcode (UPC/EAN-8/EAN-13 formats)
+4. Backend queries Open Food Facts API (2.8M+ products worldwide)
+5. Product data returned with nutrition info:
+   - Calories per 100g/ml
+   - Protein, carbs, and fat content
+   - Brand and product name
+   - Serving size information
+6. User confirms to add to shopping list with nutrition data
+7. When marked as bought, nutrition data moves to inventory
+
+**Supported Barcode Formats:**
+- UPC-A (12 digits) - Common in North America
+- UPC-E (8 digits) - Shortened UPC
+- EAN-13 (13 digits) - International standard
+- EAN-8 (8 digits) - Shorter European format
+
+**Manual Entry:** If camera unavailable, users can type barcode numbers directly
+
+### 10. Backend API Integration
+
+The app communicates with the FastAPI backend using these endpoints:
+
+**Recipe Management:**
+- `GET /health` - Health check
+- `GET /recipes/{user}` - Get all recipes for a user
+- `POST /recipes/` - Create a new recipe
+- `PUT /recipes/{id}` - Update a recipe
+- `DELETE /recipes/{id}` - Delete a recipe
+- `GET /github-recipes` - Fetch community recipes
+
+**Shopping & Inventory:**
+- `GET /shopping-list/{user}` - Get shopping list
+- `POST /shopping-list` - Add item to shopping list
+- `DELETE /shopping-list/{id}` - Remove item
+- `POST /shopping-list/{id}/mark-bought` - Move item to inventory
+- `GET /inventory/{user}` - Get inventory items
+- `POST /inventory` - Add item to inventory
+- `POST /inventory/consume-ingredient` - Consume ingredient
+- `POST /inventory/consume-recipe` - Consume recipe ingredients
+- `GET /inventory/low-stock` - Get low stock items
+- `PUT /inventory/update-amount` - Update item amount
+
+**Barcode & Nutrition:**
+- `GET /barcode/{barcode}` - Look up product by barcode (Open Food Facts)
+- `GET /nutrition/logs/{user}` - Get nutrition logs
+- `POST /nutrition/log` - Log a meal
+- `GET /nutrition/daily-summary/{user}/{date}` - Get daily summary
+- `PUT /nutrition/log/{id}` - Update meal log
+- `DELETE /nutrition/log/{id}` - Delete meal log
+- `POST /nutrition/goals` - Set nutrition goals
+- `GET /nutrition/goals/{user}` - Get nutrition goals
+- `GET /nutrition/weekly-summary/{user}` - Get weekly summary
+
+**Account & Weight:**
+- `POST /accounts/create` - Create user account
+- `GET /accounts/{username}` - Get account details
+- `PUT /accounts/{username}` - Update account
+- `DELETE /accounts/{username}` - Delete account
+- `POST /weight/log` - Add weight measurement
+- `GET /weight/{username}` - Get weight history
+- `DELETE /weight/{id}` - Delete weight entry
+- `GET /weight/{username}/stats` - Get weight statistics
+
+See the [Backend README](../Backend/README.md) for full API documentation.
+
 ---
 
 ## 📱 Building for Production
