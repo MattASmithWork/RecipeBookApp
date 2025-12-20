@@ -17,6 +17,8 @@ password.txt
 # Then explicitly allow README.md files anywhere
 !README.md
 !**/README.md
+# Keep AI documentation local only (not in git)
+AI_SYSTEM_DOCUMENTATION.md
 
 # Ignore ALL .txt files except requirements
 *.txt

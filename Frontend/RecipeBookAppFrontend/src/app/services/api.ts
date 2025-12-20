@@ -320,6 +320,102 @@ export interface WeightStats {
   lastDate: string;
 }
 
+/**
+ * Gut Health Log Entry
+ * Tracks digestive symptoms, bowel movements, and related health data
+ */
+export interface GutHealthLog {
+  _id?: string;
+  username: string;
+  date: string;  // ISO date string
+  symptom_type: string;  // bloating, cramps, gas, diarrhea, constipation, nausea, heartburn, etc.
+  severity: number;  // 1-10 scale
+  bristol_scale?: number;  // Bristol Stool Scale (1-7)
+  mood?: string;  // happy, anxious, stressed, calm, etc.
+  energy_level?: number;  // 1-10 scale
+  notes?: string;
+  potential_triggers?: string[];  // Foods or activities that may have caused symptoms
+  created_at?: string;
+}
+
+/**
+ * Gut Health Summary
+ * Statistical summary of gut health over a period
+ */
+export interface GutHealthSummary {
+  username: string;
+  days_analyzed: number;
+  total_logs: number;
+  gut_health_score: number;  // 0-100 score
+  rating: 'Excellent' | 'Good' | 'Fair' | 'Needs Attention';
+  message: string;
+  average_severity: number;
+  symptom_breakdown: { [key: string]: number };  // { "bloating": 5, "cramps": 3 }
+  most_common_symptom: string | null;
+}
+
+/**
+ * AI Analysis Result
+ * Comprehensive AI-powered gut health analysis
+ */
+export interface AIAnalysis {
+  ai_recommendations: {
+    recommendations: string[];  // Actionable dietary suggestions
+    trigger_foods: string[];  // Foods that may be causing issues
+    beneficial_foods: string[];  // Foods that may help
+    probiotic_suggestions: string[];  // Probiotic-rich foods to try
+    lifestyle_tips: string[];  // Non-dietary recommendations
+    confidence_score: number;  // 0-100 confidence in recommendations
+    reasoning: string;  // Explanation of analysis
+  };
+  correlations: Array<{
+    food: string;
+    correlation_count: number;
+    associated_symptoms: string[];
+    confidence: number;
+  }>;
+  symptom_summary: {
+    total_symptoms: number;
+    most_common: string | null;
+    average_severity: number;
+  };
+  trends: {
+    trend: 'improving' | 'worsening' | 'stable' | 'insufficient_data';
+    message: string;
+    first_period_avg?: number;
+    second_period_avg?: number;
+    change_percentage?: number;
+  };
+  analysis_period_days: number;
+  total_symptoms_logged: number;
+  total_meals_logged: number;
+}
+
+/**
+ * Gut Health Goals
+ * User's gut health goals and dietary preferences
+ */
+export interface GutHealthGoals {
+  _id?: string;
+  username: string;
+  primary_goals: string[];  // reduce_bloating, improve_regularity, etc.
+  dietary_restrictions?: string[];  // lactose_free, gluten_free, vegan, etc.
+  known_trigger_foods?: string[];
+  probiotic_preferences?: string[];
+  updated_at?: string;
+}
+
+/**
+ * Meal Suggestion
+ * AI-generated meal suggestion
+ */
+export interface MealSuggestion {
+  name: string;
+  recipe: string[];  // Steps
+  why_beneficial: string;
+  calories: number;
+}
+
 // === Health Check ===
 
 /**
@@ -1018,6 +1114,156 @@ export const getWeightStats = async (username: string): Promise<WeightStats> => 
     return response.data;
   } catch (error) {
     console.error('[API] Error fetching weight stats:', error);
+    throw error;
+  }
+};
+
+// ========================================
+// === Gut Health & AI Recommendation Endpoints ===
+// ========================================
+
+/**
+ * Log a gut health entry (symptoms, bowel movements, mood, etc.)
+ * @param entry - Gut health log entry
+ * @returns Promise with created entry including ID
+ */
+export const logGutHealth = async (entry: Omit<GutHealthLog, '_id' | 'created_at'>): Promise<GutHealthLog> => {
+  try {
+    const response = await api.post('/gut-health/log', entry);
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error logging gut health:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get gut health logs for a user
+ * @param username - Username to fetch logs for
+ * @param days - Number of days to look back (default: 30)
+ * @param symptomType - Optional filter by symptom type
+ * @returns Promise with array of gut health logs
+ */
+export const getGutHealthLogs = async (
+  username: string,
+  days: number = 30,
+  symptomType?: string
+): Promise<GutHealthLog[]> => {
+  try {
+    const params: any = { days };
+    if (symptomType) params.symptom_type = symptomType;
+    
+    const response = await api.get(`/gut-health/${username}`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error fetching gut health logs:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a gut health log entry
+ * @param id - Log entry ID to delete
+ * @returns Promise with confirmation message
+ */
+export const deleteGutHealthLog = async (id: string): Promise<{ message: string }> => {
+  try {
+    const response = await api.delete(`/gut-health/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error deleting gut health log:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get gut health summary statistics
+ * @param username - Username to analyze
+ * @param days - Number of days to analyze (default: 7)
+ * @returns Promise with gut health summary and score
+ */
+export const getGutHealthSummary = async (
+  username: string,
+  days: number = 7
+): Promise<GutHealthSummary> => {
+  try {
+    const response = await api.get(`/gut-health/${username}/summary`, { params: { days } });
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error fetching gut health summary:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get AI-powered gut health analysis with personalized recommendations
+ * Uses Google Gemini AI (free tier) to analyze patterns and provide insights
+ * Rate limited to 10 requests/minute
+ * @param username - Username to analyze
+ * @param days - Number of days to analyze (default: 7)
+ * @returns Promise with comprehensive AI analysis
+ */
+export const analyzeGutHealth = async (
+  username: string,
+  days: number = 7
+): Promise<AIAnalysis> => {
+  try {
+    const response = await api.post(`/gut-health/${username}/analyze`, null, { params: { days } });
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error analyzing gut health:', error);
+    throw error;
+  }
+};
+
+/**
+ * Set user's gut health goals and dietary preferences
+ * @param goals - User's gut health goals
+ * @returns Promise with saved goals including ID
+ */
+export const setGutHealthGoals = async (goals: Omit<GutHealthGoals, '_id' | 'updated_at'>): Promise<GutHealthGoals> => {
+  try {
+    const response = await api.post('/gut-health/goals', goals);
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error setting gut health goals:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get user's gut health goals and preferences
+ * @param username - Username to fetch goals for
+ * @returns Promise with user's gut health goals
+ */
+export const getGutHealthGoals = async (username: string): Promise<GutHealthGoals> => {
+  try {
+    const response = await api.get(`/gut-health/goals/${username}`);
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error fetching gut health goals:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get AI-powered gut-friendly meal suggestions
+ * Rate limited to 10 requests/minute
+ * @param username - Username to get suggestions for
+ * @param availableIngredients - Optional list of ingredients user has
+ * @returns Promise with array of meal suggestions
+ */
+export const getGutFriendlyMeals = async (
+  username: string,
+  availableIngredients?: string[]
+): Promise<{ username: string; meal_suggestions: MealSuggestion[] }> => {
+  try {
+    const response = await api.post(`/gut-health/${username}/meal-suggestions`, {
+      available_ingredients: availableIngredients,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error fetching meal suggestions:', error);
     throw error;
   }
 };

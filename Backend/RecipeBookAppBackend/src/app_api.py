@@ -17,7 +17,7 @@ from model_to_dict import model_to_dict
 import httpx
 import json
 from typing import Optional, List, Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timezone
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -55,8 +55,7 @@ nutrition_logs = db["nutrition_logs"]  # Daily nutrition and calorie tracking
 user_nutrition_goals = db["user_nutrition_goals"]  # User's nutrition goals/targets
 user_accounts = db["user_accounts"]  # User account profiles with health metrics
 weight_tracking = db["weight_tracking"]  # Monthly weight measurements for users
-user_accounts = db["user_accounts"]  # User account profiles with health metrics
-weight_tracking = db["weight_tracking"]  # Monthly weight measurements for users
+gut_health_logs = db["gut_health_logs"]  # Gut health symptoms and tracking data
 
 
 # === Helper Functions ===
@@ -556,6 +555,82 @@ class WeightEntry(BaseModel):
         except ValueError:
             raise ValueError('Invalid date format. Use YYYY-MM-DD or ISO format')
 
+
+class GutHealthLog(BaseModel):
+    """
+    Gut health tracking entry with symptoms, severity, and notes.
+    
+    Supports tracking:
+    - Digestive symptoms (bloating, cramps, diarrhea, constipation, etc.)
+    - Bowel movements (Bristol Stool Scale)
+    - Mood and energy levels (gut-brain connection)
+    - Triggers and notes
+    """
+    username: str = Field(..., min_length=1, max_length=50)
+    date: str = Field(..., min_length=1)  # ISO date string
+    
+    # Symptom tracking
+    symptom_type: str = Field(
+        ..., 
+        min_length=1, 
+        max_length=100,
+        description="Type of symptom: bloating, cramps, gas, diarrhea, constipation, nausea, heartburn, etc."
+    )
+    severity: int = Field(..., ge=1, le=10, description="Severity rating from 1 (mild) to 10 (severe)")
+    
+    # Optional bowel movement tracking (Bristol Stool Scale: 1-7)
+    bristol_scale: Optional[int] = Field(None, ge=1, le=7, description="Bristol Stool Scale (1=hard lumps, 7=liquid)")
+    
+    # Mood and energy (gut-brain connection)
+    mood: Optional[str] = Field(None, max_length=50, description="Mood: happy, anxious, stressed, calm, etc.")
+    energy_level: Optional[int] = Field(None, ge=1, le=10, description="Energy level 1-10")
+    
+    # Additional context
+    notes: Optional[str] = Field(None, max_length=1000, description="Additional notes, potential triggers")
+    potential_triggers: Optional[List[str]] = Field(None, description="Foods or activities that may have triggered symptoms")
+    
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        """Ensure username is lowercase"""
+        return v.lower().strip()
+    
+    @field_validator('symptom_type')
+    @classmethod
+    def validate_symptom_type(cls, v: str) -> str:
+        """Normalize symptom type"""
+        return v.lower().strip()
+
+
+class GutHealthGoals(BaseModel):
+    """User's gut health goals and dietary preferences for AI recommendations"""
+    username: str = Field(..., min_length=1, max_length=50)
+    
+    # Goals
+    primary_goals: List[str] = Field(
+        ..., 
+        description="Goals: reduce_bloating, improve_regularity, reduce_cramps, increase_energy, etc."
+    )
+    
+    # Dietary restrictions/preferences
+    dietary_restrictions: Optional[List[str]] = Field(
+        None, 
+        description="Restrictions: lactose_free, gluten_free, vegan, low_fodmap, etc."
+    )
+    
+    # Foods to avoid (known triggers)
+    known_trigger_foods: Optional[List[str]] = Field(None, description="Foods user knows cause issues")
+    
+    # Preferred probiotic sources
+    probiotic_preferences: Optional[List[str]] = Field(
+        None, 
+        description="Preferred probiotics: yogurt, kefir, kombucha, sauerkraut, etc."
+    )
+    
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        return v.lower().strip()
 
 
 # === Recipe Endpoints ===
@@ -2222,5 +2297,411 @@ async def get_weight_stats(request: Request, username: str):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating weight stats: {str(e)}")
+
+
+# === Gut Health & AI Recommendation Endpoints ===
+
+@app.post("/gut-health/log")
+@limiter.limit("60/minute")
+async def log_gut_health(request: Request, entry: GutHealthLog):
+    """
+    Log a gut health entry (symptoms, bowel movements, mood, etc.).
+    
+    Tracks digestive symptoms with severity ratings, Bristol Stool Scale,
+    mood/energy levels, and potential triggers for correlation analysis.
+    
+    Args:
+        entry: Gut health log entry
+    
+    Returns:
+        Created entry with ID
+    """
+    try:
+        # Parse date to datetime object for database storage
+        from datetime import datetime
+        entry_date = datetime.fromisoformat(entry.date.split('T')[0])
+        
+        entry_dict = {
+            "username": entry.username.lower(),
+            "date": entry_date,
+            "symptom_type": entry.symptom_type,
+            "severity": entry.severity,
+            "bristol_scale": entry.bristol_scale,
+            "mood": entry.mood,
+            "energy_level": entry.energy_level,
+            "notes": entry.notes,
+            "potential_triggers": entry.potential_triggers,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        result = gut_health_logs.insert_one(entry_dict)
+        entry_dict["_id"] = str(result.inserted_id)
+        
+        return model_to_dict(entry_dict)
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error logging gut health: {str(e)}")
+
+
+@app.get("/gut-health/{username}")
+@limiter.limit("60/minute")
+async def get_gut_health_logs(
+    request: Request, 
+    username: str, 
+    days: Optional[int] = 30,
+    symptom_type: Optional[str] = None
+):
+    """
+    Get gut health logs for a user.
+    
+    Args:
+        username: Username to fetch logs for
+        days: Number of days to look back (default: 30)
+        symptom_type: Optional filter by symptom type
+    
+    Returns:
+        List of gut health logs
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        # Calculate cutoff date
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        
+        # Build query
+        query = {
+            "username": username.lower(),
+            "date": {"$gte": cutoff}
+        }
+        
+        if symptom_type:
+            query["symptom_type"] = symptom_type.lower()
+        
+        # Fetch logs
+        logs = list(gut_health_logs.find(query).sort("date", -1))
+        
+        return [model_to_dict(log) for log in logs]
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching gut health logs: {str(e)}")
+
+
+@app.delete("/gut-health/{id}")
+@limiter.limit("30/minute")
+async def delete_gut_health_log(request: Request, id: str):
+    """
+    Delete a gut health log entry.
+    
+    Args:
+        id: Log entry ID to delete
+    
+    Returns:
+        Confirmation message
+    """
+    try:
+        entry_id = validate_object_id(id, "gut health log")
+        result = gut_health_logs.delete_one({"_id": entry_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Gut health log not found")
+        
+        return {"message": "Gut health log deleted successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting gut health log: {str(e)}")
+
+
+@app.get("/gut-health/{username}/summary")
+@limiter.limit("30/minute")
+async def get_gut_health_summary(
+    request: Request, 
+    username: str, 
+    days: Optional[int] = 7
+):
+    """
+    Get a summary of gut health for a user over a specified period.
+    
+    Returns:
+        - Symptom frequency breakdown
+        - Average severity
+        - Most common symptoms
+        - Gut health score (0-100)
+    
+    Args:
+        username: Username to analyze
+        days: Number of days to analyze (default: 7)
+    
+    Returns:
+        Summary statistics and gut health score
+    """
+    try:
+        from datetime import datetime, timedelta
+        from ai_services import GutHealthAnalyzer
+        
+        # Get recent logs
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        logs = list(gut_health_logs.find({
+            "username": username.lower(),
+            "date": {"$gte": cutoff}
+        }).sort("date", -1))
+        
+        if not logs:
+            return {
+                "username": username.lower(),
+                "days_analyzed": days,
+                "total_logs": 0,
+                "gut_health_score": 100,
+                "rating": "Excellent",
+                "message": "No symptoms logged - gut health appears excellent!",
+                "symptom_breakdown": {}
+            }
+        
+        # Convert to dicts for analyzer
+        log_dicts = [model_to_dict(log) for log in logs]
+        
+        # Calculate gut health score
+        analyzer = GutHealthAnalyzer()
+        score_data = analyzer.calculate_gut_health_score(log_dicts)
+        
+        # Calculate symptom breakdown
+        from collections import defaultdict
+        symptom_counts = defaultdict(int)
+        total_severity = 0
+        
+        for log in log_dicts:
+            symptom_counts[log.get('symptom_type', 'Unknown')] += 1
+            total_severity += log.get('severity', 0)
+        
+        avg_severity = total_severity / len(log_dicts) if log_dicts else 0
+        
+        return {
+            "username": username.lower(),
+            "days_analyzed": days,
+            "total_logs": len(log_dicts),
+            "gut_health_score": score_data["score"],
+            "rating": score_data["rating"],
+            "message": score_data["message"],
+            "average_severity": round(avg_severity, 1),
+            "symptom_breakdown": dict(symptom_counts),
+            "most_common_symptom": max(symptom_counts.items(), key=lambda x: x[1])[0] if symptom_counts else None
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating gut health summary: {str(e)}")
+
+
+@app.post("/gut-health/{username}/analyze")
+@limiter.limit("10/minute")  # Lower limit for AI-powered endpoint
+async def analyze_gut_health(
+    request: Request, 
+    username: str, 
+    days: Optional[int] = 7
+):
+    """
+    AI-powered gut health analysis with personalized recommendations.
+    
+    Uses Google Gemini AI (free tier) to:
+    - Analyze symptom patterns and food correlations
+    - Identify potential trigger foods
+    - Recommend beneficial foods and dietary changes
+    - Suggest gut-friendly meals
+    
+    This endpoint is rate-limited to conserve API usage.
+    
+    Args:
+        username: Username to analyze
+        days: Number of days to analyze (default: 7)
+    
+    Returns:
+        - AI recommendations
+        - Food-symptom correlations
+        - Trigger foods
+        - Beneficial foods
+        - Gut health trends
+    """
+    try:
+        from datetime import datetime, timedelta
+        from ai_services import GutHealthAnalyzer
+        
+        # Get user account for profile data
+        user_account = user_accounts.find_one({"username": username.lower()})
+        if not user_account:
+            raise HTTPException(status_code=404, detail="User account not found")
+        
+        # Get recent gut health logs
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        gut_logs = list(gut_health_logs.find({
+            "username": username.lower(),
+            "date": {"$gte": cutoff}
+        }).sort("date", -1))
+        
+        # Get recent nutrition logs for correlation
+        nutrition_data = list(nutrition_logs.find({
+            "username": username.lower(),
+            "date": {"$gte": cutoff}
+        }).sort("date", -1))
+        
+        # Convert to dicts
+        gut_log_dicts = [model_to_dict(log) for log in gut_logs]
+        nutrition_dicts = [model_to_dict(log) for log in nutrition_data]
+        
+        # Build user profile for AI
+        user_profile = {
+            "age": user_account.get("age"),
+            "gender": user_account.get("gender"),
+            "weight": user_account.get("weight"),
+            "height": user_account.get("height"),
+            "activity_level": user_account.get("activity_level"),
+            "bmi": user_account.get("bmi"),
+            "bmr": user_account.get("bmr"),
+            "goals": "Improve gut health and overall wellness"
+        }
+        
+        # Run AI analysis
+        analyzer = GutHealthAnalyzer()
+        analysis = await analyzer.analyze_and_recommend(
+            user_id=username.lower(),
+            gut_health_logs=gut_log_dicts,
+            nutrition_logs=nutrition_dicts,
+            user_profile=user_profile,
+            days_to_analyze=days
+        )
+        
+        return analysis
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in gut health analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing gut health: {str(e)}")
+
+
+@app.post("/gut-health/goals")
+@limiter.limit("30/minute")
+async def set_gut_health_goals(request: Request, goals: GutHealthGoals):
+    """
+    Set user's gut health goals and dietary preferences.
+    
+    Used by AI to personalize recommendations.
+    
+    Args:
+        goals: User's gut health goals and preferences
+    
+    Returns:
+        Saved goals with ID
+    """
+    try:
+        goals_dict = {
+            "username": goals.username.lower(),
+            "primary_goals": goals.primary_goals,
+            "dietary_restrictions": goals.dietary_restrictions,
+            "known_trigger_foods": goals.known_trigger_foods,
+            "probiotic_preferences": goals.probiotic_preferences,
+            "updated_at": datetime.now(timezone.utc)
+        }
+        
+        # Upsert (update if exists, insert if not)
+        result = db["gut_health_goals"].update_one(
+            {"username": goals.username.lower()},
+            {"$set": goals_dict},
+            upsert=True
+        )
+        
+        if result.upserted_id:
+            goals_dict["_id"] = str(result.upserted_id)
+        else:
+            # Get existing document
+            existing = db["gut_health_goals"].find_one({"username": goals.username.lower()})
+            goals_dict["_id"] = str(existing["_id"])
+        
+        return model_to_dict(goals_dict)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving gut health goals: {str(e)}")
+
+
+@app.get("/gut-health/goals/{username}")
+@limiter.limit("60/minute")
+async def get_gut_health_goals(request: Request, username: str):
+    """
+    Get user's gut health goals and preferences.
+    
+    Args:
+        username: Username to fetch goals for
+    
+    Returns:
+        User's gut health goals
+    """
+    try:
+        goals = db["gut_health_goals"].find_one({"username": username.lower()})
+        
+        if not goals:
+            raise HTTPException(status_code=404, detail="No gut health goals found for this user")
+        
+        return model_to_dict(goals)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching gut health goals: {str(e)}")
+
+
+@app.post("/gut-health/{username}/meal-suggestions")
+@limiter.limit("10/minute")  # Lower limit for AI endpoint
+async def get_gut_friendly_meals(
+    request: Request,
+    username: str,
+    available_ingredients: Optional[List[str]] = None
+):
+    """
+    Get AI-powered gut-friendly meal suggestions.
+    
+    Uses user's gut health goals and dietary restrictions to suggest
+    meals that support digestive health.
+    
+    Args:
+        username: Username to get suggestions for
+        available_ingredients: Optional list of ingredients user has
+    
+    Returns:
+        List of meal suggestions with recipes and why they're beneficial
+    """
+    try:
+        from ai_services import GutHealthAnalyzer
+        
+        # Get user's gut health goals
+        goals = db["gut_health_goals"].find_one({"username": username.lower()})
+        
+        if not goals:
+            # Use defaults if no goals set
+            dietary_restrictions = []
+            health_goals = ["improve_digestion", "general_gut_health"]
+        else:
+            dietary_restrictions = goals.get("dietary_restrictions", [])
+            health_goals = goals.get("primary_goals", [])
+        
+        # Get user profile for context
+        user_account = user_accounts.find_one({"username": username.lower()})
+        user_profile = model_to_dict(user_account) if user_account else {}
+        
+        # Get meal suggestions from AI
+        analyzer = GutHealthAnalyzer()
+        meals = await analyzer.get_personalized_meal_plan(
+            user_profile=user_profile,
+            dietary_restrictions=dietary_restrictions,
+            gut_health_goals=health_goals,
+            available_ingredients=available_ingredients
+        )
+        
+        return {"username": username.lower(), "meal_suggestions": meals}
+    
+    except Exception as e:
+        print(f"Error getting meal suggestions: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating meal suggestions: {str(e)}")
+
 
 
