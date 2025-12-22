@@ -108,48 +108,36 @@ The application follows a modern full-stack architecture:
 ### ⚖️ Weight Tracking
 - **Monthly Measurements**: Log weight with dates and notes
 - **Change Tracking**: Automatic calculation of weight changes between entries
-- **Trend Analysis**: Track if weight is gaining, losing, or stable
 - **Statistics Dashboard**: 
   - Total weight change (kg and percentage)
   - Average monthly change
   - Highest and lowest recorded weights
-  - Months tracked
-  - Current trend indicators
-- **BMI Updates**: Automatically recalculates BMI with each weight entry
 - **History View**: Timeline of all weight measurements with changes
 
 ### 🤖 AI-Powered Intelligence
-- **Ingredient Matching**: Fuzzy matching for price estimation (e.g., "tomato" matches "tomatoes")
 - **Similarity Analysis**: Calculates recipe similarity based on ingredient overlap
 - **Confidence Scoring**: Provides confidence levels for price and calorie estimates
 - **Learning System**: Uses GitHub recipe database as training data
 - **Barcode Integration**: Connects to Open Food Facts API for product data (2.8M+ products worldwide)
 - **Smart Nutrition**: Automatic nutrition data lookup and storage for grocery items
-
 ---
 
 ## 📋 Table of Contents
-
 ### 🗂️ Documentation
 
 - **[Backend Documentation](./Backend/README.md)** - Complete guide to the FastAPI backend
   - Docker setup and explanation
   - File structure and architecture
-  - MongoDB Atlas configuration
   - Railway deployment guide
   - API endpoints reference
-  - Environment variables
-  - Troubleshooting
 
 - **[Frontend Documentation](./Frontend/README.md)** - Complete guide to the React Native mobile app
   - React Native and Expo setup
-  - File structure and components
   - Dependencies and package management
   - Development and debugging
   - Running on iOS/Android/Web
   - Building for production
   - Troubleshooting
-
 ### 🎯 Quick Start Guides
 
 **For Backend Setup:**
@@ -158,7 +146,6 @@ cd Backend/RecipeBookAppBackend/src
 pip install -r requirements.txt
 # Set MONGO_URI in .env
 uvicorn app_api:app --reload
-```
 See [Backend README](./Backend/README.md) for detailed instructions.
 
 **For Frontend Setup:**

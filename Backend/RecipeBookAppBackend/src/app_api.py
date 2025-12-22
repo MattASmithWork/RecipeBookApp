@@ -10,6 +10,8 @@ This FastAPI application provides endpoints for:
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
+from fastapi import APIRouter, HTTPException
+from models import Recipe, ShoppingList, User  # adjust import as needed
 from bson import ObjectId
 from bson.errors import InvalidId
 from connectToDataBase import get_database
@@ -82,58 +84,6 @@ def validate_object_id(id_string: str, resource_name: str = "resource") -> Objec
             status_code=400, 
             detail=f"Invalid {resource_name} ID format. Must be a valid MongoDB ObjectId."
         )
-
-
-def calculate_bmr(weight_kg: float, height_cm: float, age: int, gender: str) -> float:
-    """
-    Calculate Basal Metabolic Rate (BMR) using Mifflin-St Jeor Equation.
-    This is the number of calories your body burns at rest.
-    
-    Args:
-        weight_kg: Weight in kilograms
-        height_cm: Height in centimeters
-        age: Age in years
-        gender: 'male' or 'female'
-    
-    Returns:
-        float: BMR in calories per day
-    
-    Formula:
-        Men: BMR = (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) + 5
-        Women: BMR = (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) - 161
-    """
-    bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age)
-    if gender.lower() == 'male':
-        bmr += 5
-    else:  # female
-        bmr -= 161
-    return round(bmr, 2)
-
-
-def calculate_bmi(weight_kg: float, height_cm: float) -> float:
-    """
-    Calculate Body Mass Index (BMI).
-    
-    Args:
-        weight_kg: Weight in kilograms
-        height_cm: Height in centimeters
-    
-    Returns:
-        float: BMI value
-    
-    Formula:
-        BMI = weight (kg) / (height (m))^2
-    
-    BMI Categories:
-        < 18.5: Underweight
-        18.5 - 24.9: Normal weight
-        25 - 29.9: Overweight
-        >= 30: Obese
-    """
-    height_m = height_cm / 100
-    bmi = weight_kg / (height_m ** 2)
-    return round(bmi, 2)
-
 
 def calculate_daily_calories(bmr: float, activity_level: str) -> float:
     """
@@ -530,6 +480,19 @@ class UserAccountUpdate(BaseModel):
         None, 
         pattern='^(sedentary|lightly_active|moderately_active|very_active|extremely_active)$'
     )
+
+@app.post("/shopping-list/add-recipe")
+async def add_recipe_to_shopping_list(recipe_id: str, user_id: str):
+    recipe = await Recipe.find_one({"_id": recipe_id})
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    # Assume ShoppingList is per user
+    await ShoppingList.update_one(
+        {"user_id": user_id},
+        {"$addToSet": {"items": {"$each": recipe["ingredients"]}}},
+        upsert=True
+    )
+    return {"message": "Ingredients added to shopping list"}
 
 class WeightEntry(BaseModel):
     """Monthly weight measurement for tracking progress"""

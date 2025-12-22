@@ -35,6 +35,14 @@ export interface RecipeIngredient {
   unit: string;  // Unit of measurement (kg, L, ml, g, etc.)
 }
 
+export async function addRecipeToShoppingList(recipeId: string, userId: string) {
+  await fetch('/shopping-list/add-recipe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipe_id: recipeId, user_id: userId }),
+  });
+}
+
 /**
  * Recipe interface for personal recipes
  * Represents a user's saved recipe with all cooking details

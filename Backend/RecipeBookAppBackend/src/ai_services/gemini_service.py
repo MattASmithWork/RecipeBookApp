@@ -69,13 +69,23 @@ class GeminiService:
                 - reasoning: Explanation of recommendations
         """
         # Build context prompt with all user data
+        # STEP 1: Build comprehensive prompt with all user data
+        # This creates a detailed text description that the AI can understand
+        # Includes: symptoms, foods, user profile, and historical patterns
         prompt = self._build_analysis_prompt(
             symptoms, foods_consumed, user_profile, historical_patterns
         )
         
         # Call Gemini API
+        # STEP 2: Create async HTTP client
+        # Using async allows other requests to be handled while waiting for Gemini
+        # Timeout of 30 seconds prevents hanging forever if API is slow
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
+                # STEP 3: Construct Gemini API URL with your API key
+                # Base URL: https://generativelanguage.googleapis.com/v1beta
+                # Model: gemini-1.5-flash (fast and free)
+                # Key: Your personal API key from environment variable
                 url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
                 
                 response = await client.post(
@@ -297,8 +307,15 @@ For each meal, provide:
 Return as JSON array.
 """
         
+        # STEP 2: Create async HTTP client
+        # Using async allows other requests to be handled while waiting for Gemini
+        # Timeout of 30 seconds prevents hanging forever if API is slow
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
+                # STEP 3: Construct Gemini API URL with your API key
+                # Base URL: https://generativelanguage.googleapis.com/v1beta
+                # Model: gemini-1.5-flash (fast and free)
+                # Key: Your personal API key from environment variable
                 url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
                 
                 response = await client.post(

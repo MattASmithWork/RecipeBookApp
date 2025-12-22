@@ -16,7 +16,7 @@
  * - AddRecipeModal component for creating new recipes
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, JSX } from 'react';
 import {
   View,
   Text,
@@ -29,17 +29,32 @@ import {
 import { getRecipes, Recipe } from '../services/api';  // API functions and types
 import { useRecipeStore } from '../utils/store';  // Global state management
 import AddRecipeModal from '../components/AddRecipeModal';  // Modal for adding recipes
+import { Button } from 'react-native';
+import { addRecipeToShoppingList } from '../services/api';
 
-export default function RecipesScreen() {
+interface RecipesScreenProps {
+  recipe?: Recipe;
+  userID?: string;
+}
+
+interface RecipeDetailProps {
+  recipe: Recipe;
+  userId: string;
+}
+
+export default function RecipesScreen(
+  recipe?: Recipe,
+  userID?: string
+): JSX.Element {
   // === Global State ===
   const { recipes, currentUser, setRecipes } = useRecipeStore();
-  
+
   // === Local State ===
-  const [loading, setLoading] = useState(true);  // Loading indicator while fetching recipes
-  const [showAddModal, setShowAddModal] = useState(false);  // Control add recipe modal visibility
-  const [filteredRecipes, setFilteredRecipes] = useState<Recipe[]>([]);  // Recipes after applying filters
-  const [showFilters, setShowFilters] = useState(false);  // Toggle filter panel visibility
-  const [maxTime, setMaxTime] = useState<number | null>(null);  // Max total time filter (in minutes)
+  const [loading, setLoading] = useState<boolean>(true); // Loading indicator while fetching recipes
+  const [showAddModal, setShowAddModal] = useState<boolean>(false); // Control add recipe modal visibility
+  const [filteredRecipes, setFilteredRecipes] = useState<Recipe[]>([]); // Recipes after applying filters
+  const [showFilters, setShowFilters] = useState<boolean>(false); // Toggle filter panel visibility
+  const [maxTime, setMaxTime] = useState<number | null>(null); // Max total time filter (in minutes)
 
   // === Fetch recipes when user changes ===
   useEffect(() => {
@@ -55,13 +70,13 @@ export default function RecipesScreen() {
    * Fetch recipes from backend for current user
    * Called on mount and when user changes
    */
-  const fetchRecipes = async () => {
+  const fetchRecipes = async (): Promise<void> => {
     try {
       setLoading(true);
       console.log(`[RecipesScreen] Fetching recipes for user: ${currentUser}`);
-      const data = await getRecipes(currentUser);  // GET /recipes/{user}
+      const data: Recipe[] = await getRecipes(currentUser); // GET /recipes/{user}
       console.log(`[RecipesScreen] Received ${data.length} recipes:`, data);
-      setRecipes(data);  // Update global state
+      setRecipes(data); // Update global state
     } catch (error) {
       console.error(`[RecipesScreen] Error fetching recipes:`, error);
       Alert.alert('Error', `Failed to load recipes for user "${currentUser}"`);
@@ -70,19 +85,33 @@ export default function RecipesScreen() {
     }
   };
 
+  function RecipeDetail({ recipe, userId }: RecipeDetailProps): JSX.Element {
+    const handleAddToShoppingList = async (): Promise<void> => {
+      await addRecipeToShoppingList(recipe._id!, userId);
+      alert('Added to shopping list!');
+    };
+
+    return (
+      <>
+        {/* ...existing code... */}
+        <Button title="Add to Shopping List" onPress={handleAddToShoppingList} />
+      </>
+    );
+  }
+
   /**
    * Apply time-based filters to recipes
    * Filters recipes by total cooking time (prep + cook)
    * Updates filteredRecipes state
    */
-  const applyFilters = () => {
+  const applyFilters = (): void => {
     let filtered = recipes;
 
     // Apply time filter if set
     if (maxTime !== null) {
       filtered = filtered.filter((recipe) => {
         const totalTime = recipe.prep_time + recipe.cook_time;
-        return totalTime <= maxTime;  // Only include recipes within time limit
+        return totalTime <= maxTime; // Only include recipes within time limit
       });
     }
 
@@ -93,7 +122,7 @@ export default function RecipesScreen() {
    * Clear all active filters
    * Resets maxTime to null, which shows all recipes
    */
-  const clearFilters = () => {
+  const clearFilters = (): void => {
     setMaxTime(null);
   };
 
@@ -101,7 +130,7 @@ export default function RecipesScreen() {
    * Render a single recipe card
    * Displays recipe name, calories (if available), time info, servings, and ingredient count
    */
-  const renderRecipe = ({ item }: { item: Recipe }) => {
+  const renderRecipe = ({ item }: { item: Recipe }): React.ReactElement => {
     const totalTime = item.prep_time + item.cook_time;
     return (
       <TouchableOpacity style={styles.recipeCard}>
@@ -242,7 +271,7 @@ export default function RecipesScreen() {
           <Text style={styles.resultCount}>
             {filteredRecipes.length} recipe{filteredRecipes.length !== 1 ? 's' : ''} found
           </Text>
-          
+
           {/* FlatList - efficient scrollable list of recipes */}
           <FlatList
             data={filteredRecipes} // Array of recipes to display
